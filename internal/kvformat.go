@@ -28,3 +28,19 @@ func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 		timestamp: timestamp,
 	}
 }
+
+func encodeHeader(timestamp, keySize, valueSize uint32) []byte {
+	// impl
+}
+
+func decodeHeader(header []byte) (uint32, uint32, uint32) {
+	// impl
+}
+
+func encodeKV(timestamp uint32, key string, value string) []byte {
+	// impl
+}
+
+func decodeKV(data []byte) (uint32, string, string) {
+	// impl
+}
