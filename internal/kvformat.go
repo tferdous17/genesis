@@ -75,7 +75,7 @@ func decodeHeader(header []byte) (uint32, uint32, uint32) {
 	return timestamp, keySize, valueSize
 }
 
-func EncodeKV(timestamp uint32, key string, value string) []byte {
+func (r *Record) EncodeKV(timestamp uint32, key string, value string) []byte {
 	encodedKV := make([]byte, len(key)+len(value)) // key and val can only be 4 bytes long at most each
 	encodedKV = append(encodedKV, []byte(key)...)
 	encodedKV = append(encodedKV, []byte(value)...)
@@ -88,11 +88,17 @@ func EncodeKV(timestamp uint32, key string, value string) []byte {
 	return encodedKV
 }
 
-func DecodeKV(data []byte) (uint32, string, string) {
+func (r *Record) DecodeKV(data []byte) (uint32, string, string) {
 	var timestamp uint32
 
 	_, err := binary.Decode(data[:4], binary.LittleEndian, &timestamp)
 	if err != nil {
-		fmt.Println("error decoding", err)
+		fmt.Println("error decoding timestamp", err)
 	}
+
+	// now lets figure out the offsets for key and values so we know what to decode from the byte arr
+	key := string(data[headerSize:r.Header.keySize])
+	value := string(data[headerSize+r.Header.keySize : headerSize+r.Header.keySize+r.Header.valueSize])
+
+	return timestamp, key, value
 }
