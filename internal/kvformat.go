@@ -43,9 +43,12 @@ func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 func encodeHeader(timestamp, keySize, valueSize uint32) []byte {
 	encodedHeader := make([]byte, headerSize)
 	// writes binary representation of timestamp, keySize, valueSize into our bytes buffer
-	_, err := binary.Encode(encodedHeader, binary.LittleEndian, []uint32{timestamp, keySize, valueSize})
-	if err != nil {
-		fmt.Println("error encoding header", err)
+	_, err := binary.Encode(encodedHeader[:4], binary.LittleEndian, timestamp)
+	_, err2 := binary.Encode(encodedHeader[4:8], binary.LittleEndian, keySize)
+	_, err3 := binary.Encode(encodedHeader[8:12], binary.LittleEndian, keySize)
+
+	if err != nil || err2 != nil || err3 != nil {
+		fmt.Println("error encoding header", err, err2, err3)
 	}
 	return encodedHeader
 }
@@ -55,18 +58,11 @@ func decodeHeader(header []byte) (uint32, uint32, uint32) {
 
 	// must pass in reference b/c go is call by value and won't modify original otherwise
 	_, err := binary.Decode(header[:4], binary.LittleEndian, &timestamp)
-	if err != nil {
-		fmt.Println("error decoding header", err)
-	}
-
 	_, err2 := binary.Decode(header[4:8], binary.LittleEndian, &keySize)
-	if err2 != nil {
-		fmt.Println("error decoding header", err)
-	}
+	_, err3 := binary.Decode(header[8:12], binary.LittleEndian, &valueSize)
 
-	_, err3 := binary.Decode(header[8:], binary.LittleEndian, &valueSize)
-	if err3 != nil {
-		fmt.Println("error decoding header", err)
+	if err != nil || err2 != nil || err3 != nil {
+		fmt.Println("error decoding header", err, err2, err3)
 	}
 
 	return timestamp, keySize, valueSize
