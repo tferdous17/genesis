@@ -32,6 +32,13 @@ type Header struct {
 	valueSize uint32
 }
 
+type Record struct {
+	Header     Header
+	key        string
+	value      string
+	recordSize uint32
+}
+
 func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	return KeyEntry{
 		valueSize:     size,
@@ -82,5 +89,10 @@ func EncodeKV(timestamp uint32, key string, value string) []byte {
 }
 
 func DecodeKV(data []byte) (uint32, string, string) {
-	// impl
+	var timestamp uint32
+
+	_, err := binary.Decode(data[:4], binary.LittleEndian, &timestamp)
+	if err != nil {
+		fmt.Println("error decoding", err)
+	}
 }
