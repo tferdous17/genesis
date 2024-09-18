@@ -21,16 +21,22 @@ const headerSize = 12
 
 // KeyEntry holds metadata about the KV pair, which is what we will insert into the keydir
 type KeyEntry struct {
-	valueSize uint32
-	valuePos  uint32
+	timestamp     uint32
+	valuePosition uint32
+	valueSize     uint32
+}
+
+type Header struct {
 	timestamp uint32
+	keySize   uint32
+	valueSize uint32
 }
 
 func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	return KeyEntry{
-		valueSize: size,
-		valuePos:  position,
-		timestamp: timestamp,
+		valueSize:     size,
+		valuePosition: position,
+		timestamp:     timestamp,
 	}
 }
 
@@ -66,10 +72,19 @@ func decodeHeader(header []byte) (uint32, uint32, uint32) {
 	return timestamp, keySize, valueSize
 }
 
-func encodeKV(timestamp uint32, key string, value string) []byte {
-	// impl
+func EncodeKV(timestamp uint32, key string, value string) []byte {
+	encodedKV := make([]byte, len(key)+len(value)) // key and val can only be 4 bytes long at most each
+	encodedKV = append(encodedKV, []byte(key)...)
+	encodedKV = append(encodedKV, []byte(value)...)
+
+	_, err := binary.Encode(encodedKV, binary.LittleEndian, timestamp)
+	if err != nil {
+		fmt.Println("error encoding kv", err)
+	}
+	encodedKV = append(encodedKV)
+	return encodedKV
 }
 
-func decodeKV(data []byte) (uint32, string, string) {
+func DecodeKV(data []byte) (uint32, string, string) {
 	// impl
 }
