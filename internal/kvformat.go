@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 )
@@ -75,17 +76,11 @@ func decodeHeader(header []byte) (uint32, uint32, uint32) {
 	return timestamp, keySize, valueSize
 }
 
-func (r *Record) EncodeKV(timestamp uint32, key string, value string) []byte {
-	encodedKV := make([]byte, len(key)+len(value)) // key and val can only be 4 bytes long at most each
-	encodedKV = append(encodedKV, []byte(key)...)
-	encodedKV = append(encodedKV, []byte(value)...)
-
-	_, err := binary.Encode(encodedKV, binary.LittleEndian, timestamp)
-	if err != nil {
-		fmt.Println("error encoding kv", err)
-	}
-	encodedKV = append(encodedKV)
-	return encodedKV
+func (r *Record) EncodeKV(buf *bytes.Buffer) error {
+	// write the KV data into the buffer
+	_, err := buf.WriteString(r.key)
+	buf.WriteString(r.value)
+	return err
 }
 
 func (r *Record) DecodeKV(buf []byte) (uint32, string, string) {
