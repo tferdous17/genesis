@@ -48,26 +48,25 @@ func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	}
 }
 
-func encodeHeader(timestamp, keySize, valueSize uint32) []byte {
-	encodedHeader := make([]byte, headerSize)
-	// writes binary representation of timestamp, keySize, valueSize into our bytes buffer
-	_, err := binary.Encode(encodedHeader[:4], binary.LittleEndian, timestamp)
-	_, err2 := binary.Encode(encodedHeader[4:8], binary.LittleEndian, keySize)
-	_, err3 := binary.Encode(encodedHeader[8:12], binary.LittleEndian, keySize)
+func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
+	err := binary.Write(buf, binary.LittleEndian, &h.timestamp)
+	err2 := binary.Write(buf, binary.LittleEndian, &h.keySize)
+	err3 := binary.Write(buf, binary.LittleEndian, &h.valueSize)
 
-	if err != nil || err2 != nil || err3 != nil {
-		fmt.Println("error encoding header", err, err2, err3)
+	if err2 != nil || err3 != nil {
+		fmt.Println("error encoding header")
 	}
-	return encodedHeader
+
+	return err
 }
 
-func decodeHeader(header []byte) (uint32, uint32, uint32) {
+func (h *Header) DecodeHeader(buf []byte) (uint32, uint32, uint32) {
 	var timestamp, keySize, valueSize uint32
 
 	// must pass in reference b/c go is call by value and won't modify original otherwise
-	_, err := binary.Decode(header[:4], binary.LittleEndian, &timestamp)
-	_, err2 := binary.Decode(header[4:8], binary.LittleEndian, &keySize)
-	_, err3 := binary.Decode(header[8:12], binary.LittleEndian, &valueSize)
+	_, err := binary.Decode(buf[:4], binary.LittleEndian, &timestamp)
+	_, err2 := binary.Decode(buf[4:8], binary.LittleEndian, &keySize)
+	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &valueSize)
 
 	if err != nil || err2 != nil || err3 != nil {
 		fmt.Println("error decoding header", err, err2, err3)
