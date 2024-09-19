@@ -60,19 +60,18 @@ func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 	return err
 }
 
-func (h *Header) DecodeHeader(buf []byte) (uint32, uint32, uint32) {
-	var timestamp, keySize, valueSize uint32
+func (h *Header) DecodeHeader(buf []byte) error {
 
 	// must pass in reference b/c go is call by value and won't modify original otherwise
-	_, err := binary.Decode(buf[:4], binary.LittleEndian, &timestamp)
-	_, err2 := binary.Decode(buf[4:8], binary.LittleEndian, &keySize)
-	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &valueSize)
+	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.timestamp)
+	_, err2 := binary.Decode(buf[4:8], binary.LittleEndian, &h.keySize)
+	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &h.keySize)
 
-	if err != nil || err2 != nil || err3 != nil {
-		fmt.Println("error decoding header", err, err2, err3)
+	if err2 != nil || err3 != nil {
+		fmt.Println("error decoding header")
 	}
 
-	return timestamp, keySize, valueSize
+	return err
 }
 
 func (r *Record) EncodeKV(buf *bytes.Buffer) error {
@@ -82,17 +81,11 @@ func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 	return err
 }
 
-func (r *Record) DecodeKV(buf []byte) (uint32, string, string) {
-	var timestamp uint32
-
-	_, err := binary.Decode(buf[:4], binary.LittleEndian, &timestamp)
-	if err != nil {
-		fmt.Println("error decoding timestamp", err)
-	}
-
+func (r *Record) DecodeKV(buf []byte) error {
+	err := r.Header.DecodeHeader(buf[:headerSize])
 	// now lets figure out the offsets for key and values so we know what to decode from the byte arr
-	key := string(buf[headerSize:r.Header.keySize])
-	value := string(buf[headerSize+r.Header.keySize : headerSize+r.Header.keySize+r.Header.valueSize])
-
-	return timestamp, key, value
+	r.key = string(buf[headerSize : headerSize+r.Header.keySize])
+	r.value = string(buf[headerSize : headerSize+r.Header.keySize+r.Header.valueSize])
+	r.recordSize = headerSize + r.Header.keySize + r.Header.valueSize
+	return err
 }
