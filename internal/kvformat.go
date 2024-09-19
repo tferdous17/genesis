@@ -61,7 +61,7 @@ func (h *Header) DecodeHeader(buf []byte) error {
 	// must pass in reference b/c go is call by value and won't modify original otherwise
 	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.TimeStamp)
 	_, err2 := binary.Decode(buf[4:8], binary.LittleEndian, &h.KeySize)
-	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &h.KeySize)
+	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &h.ValueSize)
 
 	if err2 != nil || err3 != nil {
 		fmt.Println("error decoding header")
