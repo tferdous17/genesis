@@ -18,36 +18,36 @@ const headerSize = 12
 
 // KeyEntry holds metadata about the KV pair, which is what we will insert into the keydir
 type KeyEntry struct {
-	timestamp     uint32
-	valuePosition uint32
-	valueSize     uint32
+	TimeStamp     uint32
+	ValuePosition uint32
+	ValueSize     uint32
 }
 
 type Header struct {
-	timestamp uint32
-	keySize   uint32
-	valueSize uint32
+	TimeStamp uint32
+	KeySize   uint32
+	ValueSize uint32
 }
 
 type Record struct {
 	Header     Header
-	key        string
-	value      string
-	recordSize uint32
+	Key        string
+	Value      string
+	RecordSize uint32
 }
 
 func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	return KeyEntry{
-		timestamp:     timestamp,
-		valuePosition: position,
-		valueSize:     size,
+		TimeStamp:     timestamp,
+		ValuePosition: position,
+		ValueSize:     size,
 	}
 }
 
 func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
-	err := binary.Write(buf, binary.LittleEndian, &h.timestamp)
-	err2 := binary.Write(buf, binary.LittleEndian, &h.keySize)
-	err3 := binary.Write(buf, binary.LittleEndian, &h.valueSize)
+	err := binary.Write(buf, binary.LittleEndian, &h.TimeStamp)
+	err2 := binary.Write(buf, binary.LittleEndian, &h.KeySize)
+	err3 := binary.Write(buf, binary.LittleEndian, &h.ValueSize)
 
 	if err2 != nil || err3 != nil {
 		fmt.Println("error encoding header")
@@ -59,9 +59,9 @@ func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 func (h *Header) DecodeHeader(buf []byte) error {
 
 	// must pass in reference b/c go is call by value and won't modify original otherwise
-	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.timestamp)
-	_, err2 := binary.Decode(buf[4:8], binary.LittleEndian, &h.keySize)
-	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &h.keySize)
+	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.TimeStamp)
+	_, err2 := binary.Decode(buf[4:8], binary.LittleEndian, &h.KeySize)
+	_, err3 := binary.Decode(buf[8:12], binary.LittleEndian, &h.KeySize)
 
 	if err2 != nil || err3 != nil {
 		fmt.Println("error decoding header")
@@ -72,20 +72,20 @@ func (h *Header) DecodeHeader(buf []byte) error {
 
 func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 	// write the KV data into the buffer
-	_, err := buf.WriteString(r.key)
-	buf.WriteString(r.value)
+	_, err := buf.WriteString(r.Key)
+	buf.WriteString(r.Value)
 	return err
 }
 
 func (r *Record) DecodeKV(buf []byte) error {
 	err := r.Header.DecodeHeader(buf[:headerSize])
 	// now lets figure out the offsets for key and values so we know what to decode from the byte arr
-	r.key = string(buf[headerSize : headerSize+r.Header.keySize])
-	r.value = string(buf[headerSize : headerSize+r.Header.keySize+r.Header.valueSize])
-	r.recordSize = headerSize + r.Header.keySize + r.Header.valueSize
+	r.Key = string(buf[headerSize : headerSize+r.Header.KeySize])
+	r.Value = string(buf[headerSize : headerSize+r.Header.KeySize+r.Header.ValueSize])
+	r.RecordSize = headerSize + r.Header.KeySize + r.Header.ValueSize
 	return err
 }
 
 func (r *Record) Size() uint32 {
-	return r.recordSize
+	return r.RecordSize
 }
