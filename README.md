@@ -1,3 +1,11 @@
 # casklite
 
-Casklite is an implementation of the Bitcask algorithm from scratch for purely educational purposes
+casklite is a disk-based, log-structured hash table KV store based on the Bitcask research paper.
+Built purely for educational purposes.
+
+Features in the works:
+- [x] Serialize/Deserialize header + key, value
+- [ ] Implement in-memory hashtable
+- [ ] Store data on disk
+- [ ] Support Put(Key, Value)
+- [ ] Support Get(Key)
