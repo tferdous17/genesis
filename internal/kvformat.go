@@ -9,11 +9,7 @@ import (
 /*
 The format for each key-value on disk is as follows:
 
-	-------------------------------------------------
-
 | timestamp | key_size | value_size | key | value |
-
-	-------------------------------------------------
 
 timestamp, key_size, value_size form the header of the entry and each of these must be 4 bytes at most
 thus header size is fixed at a length of 12 bytes
@@ -42,9 +38,9 @@ type Record struct {
 
 func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	return KeyEntry{
-		valueSize:     size,
-		valuePosition: position,
 		timestamp:     timestamp,
+		valuePosition: position,
+		valueSize:     size,
 	}
 }
 
@@ -88,4 +84,8 @@ func (r *Record) DecodeKV(buf []byte) error {
 	r.value = string(buf[headerSize : headerSize+r.Header.keySize+r.Header.valueSize])
 	r.recordSize = headerSize + r.Header.keySize + r.Header.valueSize
 	return err
+}
+
+func (r *Record) Size() uint32 {
+	return r.recordSize
 }
