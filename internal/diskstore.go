@@ -1,5 +1,10 @@
 package internal
 
+import (
+	"fmt"
+	"os"
+)
+
 /*
 notes:
 ok so a bitcask on disk is just a directory (our databse server),
@@ -19,11 +24,19 @@ within each data file:
 */
 
 type DiskStore struct {
-	ServerName string
+	Server *os.File
 }
 
-func NewDiskStore(serverName string) DiskStore {
-	return DiskStore{ServerName: serverName}
+func NewDiskStore(serverName string) (DiskStore, error) {
+	serverFile, err := os.Create(serverName)
+	ds := DiskStore{serverFile}
+
+	if err != nil {
+		fmt.Println("error creating disk store", err)
+	}
+	defer serverFile.Close()
+
+	return ds, err
 }
 
 func (ds *DiskStore) Put(key string, value string) {
