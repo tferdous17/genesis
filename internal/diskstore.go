@@ -1,8 +1,10 @@
 package internal
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"time"
 )
 
 /*
@@ -21,15 +23,17 @@ within each data file:
 
 *note: the active data file will automatically close once it reaches a certain size threshold
 
+this is DISK storage, so this will all be stored in SSD/HDD, therefore being persistent
 */
 
 type DiskStore struct {
-	Server *os.File
+	ServerName string
+	ServerFile *os.File
 }
 
 func NewDiskStore(serverName string) (DiskStore, error) {
 	serverFile, err := os.Create(serverName)
-	ds := DiskStore{serverFile}
+	ds := DiskStore{serverName, serverFile}
 
 	if err != nil {
 		fmt.Println("error creating disk store", err)
@@ -40,6 +44,31 @@ func NewDiskStore(serverName string) (DiskStore, error) {
 }
 
 func (ds *DiskStore) Put(key string, value string) {
+	record := Record{
+		Header: Header{
+			TimeStamp: uint32(time.Now().Unix()),
+			KeySize:   uint32(len(key)),
+			ValueSize: uint32(len(value)),
+		},
+		Key:        key,
+		Value:      value,
+		RecordSize: 20,
+	}
+
+	buf := bytes.Buffer{}
+	err := record.Header.EncodeHeader(&buf)
+	err2 := record.EncodeKV(&buf)
+
+	if err != nil || err2 != nil {
+		fmt.Println("error encoding header and/or kv", err)
+	}
+
+	fmt.Println(buf.Bytes())
+	// now lets dump this buffer into our file
+	err3 := os.WriteFile("teststore.db", buf.Bytes(), 0644)
+	if err3 != nil {
+		fmt.Println("error writing to file", err3)
+	}
 
 }
 
