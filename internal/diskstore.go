@@ -43,7 +43,7 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 
 	if fileExists(fileName) {
 		// placeholder? not sure how to return an existing diskstore or something
-		return nil, nil
+		return nil, errors.New("store already exists")
 	}
 
 	serverFile, err := os.Create(fileName)
