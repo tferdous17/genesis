@@ -44,6 +44,17 @@ func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	}
 }
 
+func NewHeader(buf []byte) (*Header, error) {
+	header := &Header{}
+	err := header.DecodeHeader(buf)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return header, err
+}
+
 func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 	err := binary.Write(buf, binary.LittleEndian, &h.TimeStamp)
 	err2 := binary.Write(buf, binary.LittleEndian, &h.KeySize)
