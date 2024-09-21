@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -27,13 +28,25 @@ this is DISK storage, so this will all be stored in SSD/HDD, therefore being per
 */
 
 type DiskStore struct {
-	ServerName string
 	ServerFile *os.File
 }
 
-func NewDiskStore(serverName string) (DiskStore, error) {
-	serverFile, err := os.Create(serverName)
-	ds := DiskStore{serverName, serverFile}
+func fileExists(fileName string) bool {
+	if _, err := os.Stat(fileName); errors.Is(err, os.ErrNotExist) {
+		return false // file does not exist
+	}
+	return true
+}
+
+func NewDiskStore(fileName string) (*DiskStore, error) {
+
+	if fileExists(fileName) {
+		// placeholder? not sure how to return an existing diskstore or something
+		return nil, nil
+	}
+
+	serverFile, err := os.Create(fileName)
+	ds := &DiskStore{serverFile}
 
 	if err != nil {
 		fmt.Println("error creating disk store", err)
@@ -69,9 +82,12 @@ func (ds *DiskStore) Put(key string, value string) {
 	if err3 != nil {
 		fmt.Println("error writing to file", err3)
 	}
-
 }
 
 func (ds *DiskStore) Get(key string) string {
 	return ""
+}
+
+func (ds *DiskStore) Close() bool {
+	return false
 }
