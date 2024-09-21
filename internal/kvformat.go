@@ -93,7 +93,7 @@ func (r *Record) DecodeKV(buf []byte) error {
 	err := r.Header.DecodeHeader(buf[:headerSize])
 	// now lets figure out the offsets for key and values so we know what to decode from the byte arr
 	r.Key = string(buf[headerSize : headerSize+r.Header.KeySize])
-	r.Value = string(buf[headerSize : headerSize+r.Header.KeySize+r.Header.ValueSize])
+	r.Value = string(buf[headerSize+r.Header.KeySize : headerSize+r.Header.KeySize+r.Header.ValueSize])
 	r.RecordSize = headerSize + r.Header.KeySize + r.Header.ValueSize
 	return err
 }
