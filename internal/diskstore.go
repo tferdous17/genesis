@@ -1,10 +1,12 @@
 package internal
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
 /*
@@ -29,7 +31,7 @@ this is DISK storage, so this will all be stored in SSD/HDD, therefore being per
 type DiskStore struct {
 	serverFile *os.File
 	// writePosition will tell us the current "cursor" position
-	// in the file to start reading from
+	// in the file to start reading from, default val is 0
 	writePosition int
 	// in-memory keydir that allows us to find the data we're looking for in disk
 	keyDir map[string]KeyEntry
@@ -45,6 +47,7 @@ func fileExists(fileName string) bool {
 func NewDiskStore(fileName string) (*DiskStore, error) {
 	ds := &DiskStore{keyDir: make(map[string]KeyEntry)}
 	if fileExists(fileName) {
+		// populate keydir for existing store
 		err := ds.initKeyDir(fileName)
 		if err != nil {
 			fmt.Println("error initializing keydir", err)
@@ -60,8 +63,46 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 	return ds, err
 }
 
-func (ds *DiskStore) Put(key string, value string) {
-	// create new record for this key, val entry
+func (ds *DiskStore) Put(key string, value string) error {
+	// append key, value entry to disk
+	header := Header{
+		TimeStamp: uint32(time.Now().Unix()),
+		KeySize:   uint32(len(key)),
+		ValueSize: uint32(len(value)),
+	}
+	record := Record{
+		Header:     header,
+		Key:        key,
+		Value:      value,
+		RecordSize: headerSize + header.KeySize + header.ValueSize,
+	}
+
+	// encode the entire key, value entry
+	buf := new(bytes.Buffer)
+	err := record.EncodeKV(buf)
+	if err != nil {
+		return err
+	}
+
+	// write to file
+	_, writeErr := ds.serverFile.Write(buf.Bytes())
+	if writeErr != nil {
+		return writeErr
+	}
+
+	// VERY important to call Sync, b/c this flushes the in-memory buffer of our file to the disk
+	// this is what actually makes our data persist as the data is initially stored in said buffer
+	// before reaching disk
+	syncErr := ds.serverFile.Sync()
+	if syncErr != nil {
+		fmt.Println("error syncing", syncErr)
+	}
+
+	// now update keydir
+	ds.keyDir[key] = NewKeyEntry(header.TimeStamp, uint32(ds.writePosition), record.RecordSize)
+	ds.writePosition += int(record.RecordSize)
+
+	return nil
 }
 
 func (ds *DiskStore) Get(key string) string {
