@@ -64,6 +64,10 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 }
 
 func (ds *DiskStore) Put(key string, value string) error {
+	_, ok := ds.keyDir[key]
+	if ok {
+		return errors.New("key already in there")
+	}
 	// append key, value entry to disk
 	header := Header{
 		TimeStamp: uint32(time.Now().Unix()),
@@ -106,7 +110,35 @@ func (ds *DiskStore) Put(key string, value string) error {
 }
 
 func (ds *DiskStore) Get(key string) string {
-	return ""
+	/*
+		lookup key in keydir
+		if not exist:
+			return key not found
+		else:
+			create buffer the same size as the kv entry
+			read bytes from value position to valueSize
+			decode the buffer into a record
+			return record.Value
+	*/
+	keyEntry, ok := ds.keyDir[key]
+	if !ok {
+		return "key not found"
+	}
+	// value size for "othello" -> "shakespeare"
+	// should be 30: headerSize(12) + keySize(7) + valueSize(11) = 30
+	entireEntry := make([]byte, keyEntry.ValueSize)
+
+	// read 30 bytes from the file starting from valuePosition (0 in this case)
+	ds.serverFile.ReadAt(entireEntry, int64(keyEntry.ValuePosition))
+
+	// ok now lets decode the entireEntry buffer into a record
+	record := Record{}
+	err := record.DecodeKV(entireEntry)
+	if err != nil {
+		return "error decoding kv"
+	}
+
+	return record.Value
 }
 
 func (ds *DiskStore) Close() bool {
