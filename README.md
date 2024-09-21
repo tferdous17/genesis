@@ -5,7 +5,7 @@ Built purely for educational purposes.
 
 Features in the works:
 - [x] Serialize/Deserialize header + key, value
-- [x] Implement in-memory hashtable
-- [ ] Store data on disk
-- [ ] Support Put(Key, Value)
-- [ ] Support Get(Key)
+- [x] Implement in-memory hashtable (keydir)
+- [x] Store data on disk
+- [x] Support Put(Key, Value)
+- [x] Support Get(Key)
