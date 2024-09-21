@@ -3,6 +3,7 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -26,9 +27,12 @@ this is DISK storage, so this will all be stored in SSD/HDD, therefore being per
 */
 
 type DiskStore struct {
-	serverFile    *os.File
+	serverFile *os.File
+	// writePosition will tell us the current "cursor" position
+	// in the file to start reading from
 	writePosition int
-	keyDir        map[string]KeyEntry
+	// in-memory keydir that allows us to find the data we're looking for in disk
+	keyDir map[string]KeyEntry
 }
 
 func fileExists(fileName string) bool {
@@ -69,5 +73,43 @@ func (ds *DiskStore) Close() bool {
 }
 
 func (ds *DiskStore) initKeyDir(existingFile string) error {
+	file, _ := os.Open(existingFile)
+	defer file.Close()
 
+	for {
+		// read 12 bytes from our and store it into header
+		header := make([]byte, headerSize)
+		_, err := io.ReadFull(file, header)
+
+		// error above could be EOF or some other error, so handle either case
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		// following func will decode the buffer into a Header{}
+		h, err := NewHeader(header)
+		if err != nil {
+			return err
+		}
+		// read key, val into respective buffers
+		key := make([]byte, h.KeySize)
+		value := make([]byte, h.ValueSize)
+
+		_, keyErr := io.ReadFull(file, key)
+		if keyErr != nil {
+			return err
+		}
+
+		_, valErr := io.ReadFull(file, value)
+		if valErr != nil {
+			return err
+		}
+		// total size of this key, val entry including header
+		totalSize := headerSize + h.KeySize + h.ValueSize
+		ds.keyDir[string(key)] = NewKeyEntry(h.TimeStamp, uint32(ds.writePosition), totalSize)
+		ds.writePosition += int(totalSize)
+	}
+	return nil
 }
