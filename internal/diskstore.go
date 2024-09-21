@@ -29,6 +29,7 @@ this is DISK storage, so this will all be stored in SSD/HDD, therefore being per
 
 type DiskStore struct {
 	ServerFile *os.File
+	KeyDir     MemoryStore
 }
 
 func fileExists(fileName string) bool {
@@ -46,7 +47,9 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 	}
 
 	serverFile, err := os.Create(fileName)
-	ds := &DiskStore{serverFile}
+	ds := &DiskStore{serverFile, MemoryStore{
+		data: make(map[string]string),
+	}}
 
 	if err != nil {
 		fmt.Println("error creating disk store", err)
