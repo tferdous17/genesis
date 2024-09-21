@@ -83,8 +83,9 @@ func (h *Header) DecodeHeader(buf []byte) error {
 
 func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 	// write the KV data into the buffer
-	_, err := buf.WriteString(r.Key)
-	buf.WriteString(r.Value)
+	r.Header.EncodeHeader(buf)
+	buf.WriteString(r.Key)
+	_, err := buf.WriteString(r.Value)
 	return err
 }
 
