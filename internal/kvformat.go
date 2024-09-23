@@ -20,7 +20,7 @@ const headerSize = 12
 type KeyEntry struct {
 	TimeStamp     uint32
 	ValuePosition uint32
-	ValueSize     uint32
+	EntrySize     uint32
 }
 
 type Header struct {
@@ -40,7 +40,7 @@ func NewKeyEntry(timestamp, position, size uint32) KeyEntry {
 	return KeyEntry{
 		TimeStamp:     timestamp,
 		ValuePosition: position,
-		ValueSize:     size,
+		EntrySize:     size,
 	}
 }
 
