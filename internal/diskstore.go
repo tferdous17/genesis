@@ -122,7 +122,7 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	*/
 	keyEntry, ok := ds.keyDir[key]
 	if !ok {
-		return "", errors.New("key not found")
+		return "", errors.New("error: key not found")
 	}
 	// EntrySize for "othello" -> "shakespeare"
 	// should be 30: headerSize(12) + keySize(7) + valueSize(11) = 30
@@ -131,18 +131,23 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	// read 30 bytes from the file starting from valuePosition (0 in this case)
 	ds.serverFile.ReadAt(entireEntry, int64(keyEntry.ValuePosition))
 
-	// ok now lets decode the entireEntry buffer into a record
+	// ok now let's decode the entireEntry buffer into a record
 	record := Record{}
 	err := record.DecodeKV(entireEntry)
 	if err != nil {
-		return "", errors.New("error decoding kv entry")
+		return "", err
 	}
 
 	return record.Value, nil
 }
 
 func (ds *DiskStore) Close() bool {
-	return false
+	// important to actually write to disk thru Sync() first
+	ds.serverFile.Sync()
+	if err := ds.serverFile.Close(); err != nil {
+		return false
+	}
+	return true
 }
 
 func (ds *DiskStore) initKeyDir(existingFile string) error {
