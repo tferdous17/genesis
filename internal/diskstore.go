@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bitcask-go/utils"
 	"bytes"
 	"errors"
 	"fmt"
@@ -68,6 +69,12 @@ func (ds *DiskStore) Put(key string, value string) error {
 	if ok {
 		return errors.New("key already in there")
 	}
+
+	err := utils.ValidateKV(key, value)
+	if err != nil {
+		return err
+	}
+
 	// append key, value entry to disk
 	header := Header{
 		TimeStamp: uint32(time.Now().Unix()),
