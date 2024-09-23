@@ -191,3 +191,11 @@ func (ds *DiskStore) initKeyDir(existingFile string) error {
 	}
 	return nil
 }
+
+func (ds *DiskStore) ListOfAllKeys() []string {
+	list := make([]string, 0, len(ds.keyDir))
+	for k, _ := range ds.keyDir {
+		list = append(list, k)
+	}
+	return list
+}
