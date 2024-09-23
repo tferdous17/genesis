@@ -109,7 +109,7 @@ func (ds *DiskStore) Put(key string, value string) error {
 	return nil
 }
 
-func (ds *DiskStore) Get(key string) string {
+func (ds *DiskStore) Get(key string) (string, error) {
 	/*
 		lookup key in keydir
 		if not exist:
@@ -122,11 +122,11 @@ func (ds *DiskStore) Get(key string) string {
 	*/
 	keyEntry, ok := ds.keyDir[key]
 	if !ok {
-		return "key not found"
+		return "", errors.New("key not found")
 	}
-	// value size for "othello" -> "shakespeare"
+	// EntrySize for "othello" -> "shakespeare"
 	// should be 30: headerSize(12) + keySize(7) + valueSize(11) = 30
-	entireEntry := make([]byte, keyEntry.ValueSize)
+	entireEntry := make([]byte, keyEntry.EntrySize)
 
 	// read 30 bytes from the file starting from valuePosition (0 in this case)
 	ds.serverFile.ReadAt(entireEntry, int64(keyEntry.ValuePosition))
@@ -135,10 +135,10 @@ func (ds *DiskStore) Get(key string) string {
 	record := Record{}
 	err := record.DecodeKV(entireEntry)
 	if err != nil {
-		return "error decoding kv"
+		return "", errors.New("error decoding kv entry")
 	}
 
-	return record.Value
+	return record.Value, nil
 }
 
 func (ds *DiskStore) Close() bool {
