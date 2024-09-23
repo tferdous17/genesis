@@ -4,7 +4,6 @@ import (
 	"bitcask-go/utils"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"time"
@@ -51,7 +50,7 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 		// populate keydir for existing store
 		err := ds.initKeyDir(fileName)
 		if err != nil {
-			fmt.Println("error initializing keydir", err)
+			return nil, utils.ErrKeyDirInit
 		}
 	}
 
@@ -67,7 +66,7 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 func (ds *DiskStore) Put(key string, value string) error {
 	_, ok := ds.keyDir[key]
 	if ok {
-		return errors.New("key already in there")
+		return utils.ErrDuplicateKey
 	}
 
 	err := utils.ValidateKV(key, value)
@@ -90,24 +89,12 @@ func (ds *DiskStore) Put(key string, value string) error {
 
 	// encode the entire key, value entry
 	buf := new(bytes.Buffer)
-	err := record.EncodeKV(buf)
-	if err != nil {
-		return err
+	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
+		return utils.ErrEncodingKVFailed
 	}
 
-	// write to file
-	_, writeErr := ds.serverFile.Write(buf.Bytes())
-	if writeErr != nil {
-		return writeErr
-	}
-
-	// VERY important to call Sync, b/c this flushes the in-memory buffer of our file to the disk
-	// this is what actually makes our data persist as the data is initially stored in said buffer
-	// before reaching disk
-	syncErr := ds.serverFile.Sync()
-	if syncErr != nil {
-		fmt.Println("error syncing", syncErr)
-	}
+	// write to disk
+	ds.writeToFile(buf.Bytes())
 
 	// now update keydir
 	ds.keyDir[key] = NewKeyEntry(header.TimeStamp, uint32(ds.writePosition), record.RecordSize)
@@ -129,7 +116,7 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	*/
 	keyEntry, ok := ds.keyDir[key]
 	if !ok {
-		return "", errors.New("error: key not found")
+		return "", utils.ErrKeyNotFound
 	}
 	// EntrySize for "othello" -> "shakespeare"
 	// should be 30: headerSize(12) + keySize(7) + valueSize(11) = 30
@@ -140,9 +127,8 @@ func (ds *DiskStore) Get(key string) (string, error) {
 
 	// ok now let's decode the entireEntry buffer into a record
 	record := Record{}
-	err := record.DecodeKV(entireEntry)
-	if err != nil {
-		return "", err
+	if decodeErr := record.DecodeKV(entireEntry); decodeErr != nil {
+		return "", utils.ErrDecodingKVFailed
 	}
 
 	return record.Value, nil
@@ -195,6 +181,20 @@ func (ds *DiskStore) initKeyDir(existingFile string) error {
 		totalSize := headerSize + h.KeySize + h.ValueSize
 		ds.keyDir[string(key)] = NewKeyEntry(h.TimeStamp, uint32(ds.writePosition), totalSize)
 		ds.writePosition += int(totalSize)
+	}
+	return nil
+}
+
+func (ds *DiskStore) writeToFile(data []byte) error {
+	// i want to panic on these errors b/c its bad if our data isnt writing
+	if _, writeErr := ds.serverFile.Write(data); writeErr != nil {
+		panic(writeErr)
+	}
+	// VERY important to call Sync, b/c this flushes the in-memory buffer of our file to the disk
+	// this is what actually makes our data persist as the data is initially stored in said buffer
+	// before reaching disk
+	if syncErr := ds.serverFile.Sync(); syncErr != nil {
+		panic(syncErr)
 	}
 	return nil
 }
