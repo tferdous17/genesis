@@ -15,7 +15,7 @@ The format for each key-value on disk is as follows:
 timestamp, key_size, value_size form the header of the entry and each of these must be 4 bytes at most
 thus header size is fixed at a length of 12 bytes
 */
-const headerSize = 16
+const headerSize = 17
 
 // KeyEntry holds metadata about the KV pair, which is what we will insert into the keydir
 type KeyEntry struct {
@@ -26,6 +26,7 @@ type KeyEntry struct {
 
 type Header struct {
 	CheckSum  uint32
+	Tombstone uint8
 	TimeStamp uint32
 	KeySize   uint32
 	ValueSize uint32
@@ -59,6 +60,7 @@ func NewHeader(buf []byte) (*Header, error) {
 
 func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 	err := binary.Write(buf, binary.LittleEndian, &h.CheckSum)
+	binary.Write(buf, binary.LittleEndian, &h.Tombstone)
 	binary.Write(buf, binary.LittleEndian, &h.TimeStamp)
 	binary.Write(buf, binary.LittleEndian, &h.KeySize)
 	binary.Write(buf, binary.LittleEndian, &h.ValueSize)
@@ -71,18 +73,22 @@ func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 }
 
 func (h *Header) DecodeHeader(buf []byte) error {
-
 	// must pass in reference b/c go is call by value and won't modify original otherwise
 	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.CheckSum)
-	binary.Decode(buf[4:8], binary.LittleEndian, &h.TimeStamp)
-	binary.Decode(buf[8:12], binary.LittleEndian, &h.KeySize)
-	binary.Decode(buf[12:16], binary.LittleEndian, &h.ValueSize)
+	binary.Decode(buf[4:5], binary.LittleEndian, &h.Tombstone)
+	binary.Decode(buf[5:9], binary.LittleEndian, &h.TimeStamp)
+	binary.Decode(buf[9:13], binary.LittleEndian, &h.KeySize)
+	binary.Decode(buf[13:17], binary.LittleEndian, &h.ValueSize)
 
 	if err != nil {
 		return utils.ErrDecodingHeaderFailed
 	}
 
 	return nil
+}
+
+func (h *Header) MarkTombstone() {
+	h.Tombstone = 1
 }
 
 func (r *Record) EncodeKV(buf *bytes.Buffer) error {
@@ -95,7 +101,6 @@ func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 
 func (r *Record) DecodeKV(buf []byte) error {
 	err := r.Header.DecodeHeader(buf[:headerSize])
-	// now lets figure out the offsets for key and values so we know what to decode from the byte arr
 	r.Key = string(buf[headerSize : headerSize+r.Header.KeySize])
 	r.Value = string(buf[headerSize+r.Header.KeySize : headerSize+r.Header.KeySize+r.Header.ValueSize])
 	r.RecordSize = headerSize + r.Header.KeySize + r.Header.ValueSize
@@ -116,6 +121,7 @@ func (r *Record) CalculateChecksum() uint32 {
 		we only want to calculate it from tstamp...value so go from [4:]
 	*/
 	headerBuf := new(bytes.Buffer)
+	binary.Write(headerBuf, binary.LittleEndian, &r.Header.Tombstone)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.TimeStamp)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.KeySize)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.ValueSize)
