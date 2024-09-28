@@ -76,6 +76,8 @@ func (ds *DiskStore) Put(key string, value string) error {
 
 	// append key, value entry to disk
 	header := Header{
+		CheckSum:  0,
+		Tombstone: 0,
 		TimeStamp: uint32(time.Now().Unix()),
 		KeySize:   uint32(len(key)),
 		ValueSize: uint32(len(value)),
@@ -86,6 +88,7 @@ func (ds *DiskStore) Put(key string, value string) error {
 		Value:      value,
 		RecordSize: headerSize + header.KeySize + header.ValueSize,
 	}
+	record.Header.CheckSum = record.CalculateChecksum()
 
 	// encode the entire key, value entry
 	buf := new(bytes.Buffer)
@@ -118,11 +121,12 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	if !ok {
 		return "", utils.ErrKeyNotFound
 	}
+
 	// EntrySize for "othello" -> "shakespeare"
-	// should be 30: headerSize(12) + keySize(7) + valueSize(11) = 30
+	// should be 35: headerSize(17) + keySize(7) + valueSize(11) = 35
 	entireEntry := make([]byte, keyEntry.EntrySize)
 
-	// read 30 bytes from the file starting from valuePosition (0 in this case)
+	// read 35 bytes from the file starting from valuePosition (0 in this case)
 	ds.serverFile.ReadAt(entireEntry, int64(keyEntry.ValuePosition))
 
 	// ok now let's decode the entireEntry buffer into a record
@@ -132,6 +136,44 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	}
 
 	return record.Value, nil
+}
+
+func (ds *DiskStore) Delete(key string) error {
+	// key note: this is an APPEND-ONLY db, so it wouldn't make sense to
+	// overwrite existing data and place a tombstone value there
+	// thus we have to write a semi-copy of the record w/ the tombstone val activated
+
+	_, ok := ds.keyDir[key]
+	if !ok {
+		return utils.ErrKeyNotFound
+	}
+
+	tempVal := ""
+	header := Header{
+		CheckSum:  0,
+		TimeStamp: uint32(time.Now().Unix()),
+		KeySize:   uint32(len(key)),
+		ValueSize: uint32(len(tempVal)),
+	}
+	header.MarkTombstone()
+
+	record := Record{
+		Header:     header,
+		Key:        key,
+		Value:      tempVal,
+		RecordSize: headerSize + header.KeySize + header.ValueSize,
+	}
+	record.Header.CheckSum = record.CalculateChecksum()
+
+	buf := new(bytes.Buffer)
+	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
+		return utils.ErrEncodingKVFailed
+	}
+	ds.writeToFile(buf.Bytes())
+
+	delete(ds.keyDir, key)
+
+	return nil
 }
 
 func (ds *DiskStore) Close() bool {
