@@ -1,6 +1,6 @@
-# casklite
+# genesis
 
-casklite is a disk-based, log-structured hash table KV store based on the Bitcask research paper.
+genesis is a disk-based, log-structured hash table KV store based on the Bitcask research paper.
 Built purely for educational purposes.
 
 Features in the works:
