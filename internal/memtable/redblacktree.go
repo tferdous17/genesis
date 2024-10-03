@@ -2,6 +2,7 @@ package memtable
 
 import (
 	"bitcask-go/utils"
+	"fmt"
 )
 
 /*
@@ -175,4 +176,18 @@ func (tree *RedBlackTree) Find(key string) (string, error) {
 		}
 	}
 	return "", utils.ErrKeyNotFound
+}
+
+func (tree *RedBlackTree) Inorder() {
+	inorder(tree.root)
+}
+
+func inorder(node *Node) {
+	currentNode := node
+
+	if currentNode != nil {
+		inorder(currentNode.Left)
+		fmt.Println(currentNode)
+		inorder(currentNode.Right)
+	}
 }
