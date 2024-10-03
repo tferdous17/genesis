@@ -1,6 +1,8 @@
 package memtable
 
-import "bitcask-go/utils"
+import (
+	"bitcask-go/utils"
+)
 
 /*
 Our memtable will use a Red-Black tree as its under-the-hood implementation
@@ -69,7 +71,7 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 		if parentNode == grandParentNode.Left {
 			uncleNode := grandParentNode.Right
 
-			if uncleNode.Color == RED {
+			if uncleNode != nil && uncleNode.Color == RED {
 				parentNode.Color = BLACK
 				uncleNode.Color = BLACK
 				grandParentNode.Color = RED
@@ -79,17 +81,17 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 					// node-parent-grandparent form a line, thus recolor & rotate grandparent right (opp. of node)
 					parentNode.Color = BLACK
 					grandParentNode.Color = RED
-					rotateRight(grandParentNode)
+					tree.rotateRight(grandParentNode)
 				} else { // node is right child of parent node
 					// node-parent-grandparent form a triangle, thus rotate parent left (opp. of node)
 					node = parentNode
-					rotateLeft(parentNode)
+					tree.rotateLeft(parentNode)
 				}
 			}
 		} else { // Parent is right child of grandparent
 			uncleNode := grandParentNode.Left
 
-			if uncleNode.Color == RED {
+			if uncleNode != nil && uncleNode.Color == RED {
 				parentNode.Color = BLACK
 				uncleNode.Color = BLACK
 				grandParentNode.Color = RED
@@ -99,11 +101,11 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 					// node-parent-grandparent form a line, thus recolor & rotate grandparent right (opp. of node)
 					parentNode.Color = BLACK
 					grandParentNode.Color = RED
-					rotateRight(grandParentNode)
+					tree.rotateRight(grandParentNode)
 				} else { // node is right child of parent node
 					// node-parent-grandparent form a triangle, thus rotate parent left (opp. of node)
 					node = parentNode
-					rotateLeft(parentNode)
+					tree.rotateLeft(parentNode)
 				}
 			}
 		}
@@ -113,7 +115,11 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 	tree.root.Color = BLACK
 }
 
-func rotateRight(node *Node) *Node {
+func (tree *RedBlackTree) rotateRight(node *Node) {
+	if node == nil || node.Left == nil {
+		return
+	}
+
 	leftChild := node.Left      // store node's leftChild
 	node.Left = leftChild.Right // overwrite node.Left with leftChild's right node
 	if leftChild.Right != nil {
@@ -123,7 +129,7 @@ func rotateRight(node *Node) *Node {
 	leftChild.Parent = node.Parent // move leftChild's parent up a level (bc its new position)
 	if node.Parent == nil {
 		// node is the root
-		node = leftChild
+		tree.root = leftChild
 	} else if node == node.Parent.Right {
 		node.Parent.Right = leftChild
 	} else {
@@ -131,11 +137,13 @@ func rotateRight(node *Node) *Node {
 	}
 	leftChild.Right = node  // move node down to be left child's right node
 	node.Parent = leftChild // handle left child's left node
-
-	return leftChild
 }
 
-func rotateLeft(node *Node) *Node {
+func (tree *RedBlackTree) rotateLeft(node *Node) {
+	if node == nil || node.Right == nil {
+		return
+	}
+
 	rightChild := node.Right
 	node.Right = rightChild.Right
 	if rightChild.Left != nil {
@@ -143,7 +151,7 @@ func rotateLeft(node *Node) *Node {
 	}
 	rightChild.Parent = node.Parent
 	if node.Parent == nil {
-		node = rightChild
+		tree.root = rightChild
 	} else if node == node.Parent.Left {
 		node.Parent.Left = rightChild
 	} else {
@@ -151,8 +159,6 @@ func rotateLeft(node *Node) *Node {
 	}
 	rightChild.Left = node
 	node.Parent = rightChild
-
-	return rightChild
 }
 
 func (tree *RedBlackTree) Find(key string) (string, error) {
