@@ -77,11 +77,11 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 					// node-parent-grandparent form a line, thus recolor & rotate grandparent right (opp. of node)
 					parentNode.Color = BLACK
 					grandParentNode.Color = RED
-					tree.rotateRight(grandParentNode)
+					rotateRight(grandParentNode)
 				} else { // node is right child of parent node
 					// node-parent-grandparent form a triangle, thus rotate parent left (opp. of node)
 					node = parentNode
-					tree.rotateLeft(parentNode)
+					rotateLeft(parentNode)
 				}
 			}
 		} else { // Parent is right child of grandparent
@@ -97,11 +97,11 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 					// node-parent-grandparent form a line, thus recolor & rotate grandparent right (opp. of node)
 					parentNode.Color = BLACK
 					grandParentNode.Color = RED
-					tree.rotateRight(grandParentNode)
+					rotateRight(grandParentNode)
 				} else { // node is right child of parent node
 					// node-parent-grandparent form a triangle, thus rotate parent left (opp. of node)
 					node = parentNode
-					tree.rotateLeft(parentNode)
+					rotateLeft(parentNode)
 				}
 			}
 		}
@@ -111,14 +111,48 @@ func (tree *RedBlackTree) fixInsert(node *Node) {
 	tree.root.Color = BLACK
 }
 
+func rotateRight(node *Node) *Node {
+	leftChild := node.Left      // store node's leftChild
+	node.Left = leftChild.Right // overwrite node.Left with leftChild's right node
+	if leftChild.Right != nil {
+		leftChild.Right.Parent = node // reassign the parent to node
+	}
+
+	leftChild.Parent = node.Parent // move leftChild's parent up a level (bc its new position)
+	if node.Parent == nil {
+		// node is the root
+		node = leftChild
+	} else if node == node.Parent.Right {
+		node.Parent.Right = leftChild
+	} else {
+		node.Parent.Left = leftChild
+	}
+	leftChild.Right = node  // move node down to be left child's right node
+	node.Parent = leftChild // handle left child's left node
+
+	return leftChild
+}
+
+func rotateLeft(node *Node) *Node {
+	rightChild := node.Right
+	node.Right = rightChild.Right
+	if rightChild.Left != nil {
+		rightChild.Left.Parent = node
+	}
+	rightChild.Parent = node.Parent
+	if node.Parent == nil {
+		node = rightChild
+	} else if node == node.Parent.Left {
+		node.Parent.Left = rightChild
+	} else {
+		node.Parent.Right = rightChild
+	}
+	rightChild.Left = node
+	node.Parent = rightChild
+
+	return rightChild
+}
+
 func (tree *RedBlackTree) Find(key string) {
-	// impl
-}
-
-func (tree *RedBlackTree) rotateLeft(node *Node) {
-	// impl
-}
-
-func (tree *RedBlackTree) rotateRight(node *Node) {
 	// impl
 }
