@@ -1,5 +1,7 @@
 package memtable
 
+import "bitcask-go/utils"
+
 /*
 Our memtable will use a Red-Black tree as its under-the-hood implementation
 Meant to replace our original hash-table
@@ -153,6 +155,18 @@ func rotateLeft(node *Node) *Node {
 	return rightChild
 }
 
-func (tree *RedBlackTree) Find(key string) {
-	// impl
+func (tree *RedBlackTree) Find(key string) (string, error) {
+	// basic BST search
+	currentNode := tree.root
+	for currentNode != nil {
+		if currentNode.Key == key {
+			return currentNode.Value, nil
+		}
+		if key < currentNode.Key {
+			currentNode = currentNode.Left
+		} else if key > currentNode.Key {
+			currentNode = currentNode.Right
+		}
+	}
+	return "", utils.ErrKeyNotFound
 }
