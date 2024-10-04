@@ -1,4 +1,4 @@
-package memtable
+package internal
 
 import (
 	"bitcask-go/utils"
@@ -20,7 +20,7 @@ const (
 
 type Node struct {
 	Key    string
-	Value  string
+	Value  KeyEntry
 	Parent *Node
 	Left   *Node
 	Right  *Node
@@ -31,7 +31,7 @@ type RedBlackTree struct {
 	root *Node
 }
 
-func (tree *RedBlackTree) Insert(key, value string) {
+func (tree *RedBlackTree) Insert(key string, value KeyEntry) {
 	node := &Node{Key: key, Value: value, Color: RED}
 
 	if tree.root == nil { // If tree is empty
@@ -162,7 +162,7 @@ func (tree *RedBlackTree) rotateLeft(node *Node) {
 	node.Parent = rightChild
 }
 
-func (tree *RedBlackTree) Find(key string) (string, error) {
+func (tree *RedBlackTree) Find(key string) (KeyEntry, error) {
 	// basic BST search
 	currentNode := tree.root
 	for currentNode != nil {
@@ -175,7 +175,7 @@ func (tree *RedBlackTree) Find(key string) (string, error) {
 			currentNode = currentNode.Right
 		}
 	}
-	return "", utils.ErrKeyNotFound
+	return KeyEntry{}, utils.ErrKeyNotFound
 }
 
 func (tree *RedBlackTree) Inorder() {
