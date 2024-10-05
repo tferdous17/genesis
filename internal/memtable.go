@@ -1,8 +1,10 @@
 package internal
 
+import "fmt"
+
 type Memtable struct {
-	data RedBlackTree
-	size int
+	data        RedBlackTree
+	sizeInBytes uint32
 }
 
 func NewMemtable() *Memtable {
@@ -11,7 +13,7 @@ func NewMemtable() *Memtable {
 
 func (m *Memtable) Put(key string, value Record) {
 	m.data.Insert(key, value)
-	m.size++
+	m.sizeInBytes += value.RecordSize
 }
 
 func (m *Memtable) Get(key string) (Record, error) {
@@ -19,10 +21,12 @@ func (m *Memtable) Get(key string) (Record, error) {
 }
 
 func (m *Memtable) PrintAllRecords() {
+
 }
 
 func (m *Memtable) Flush(filename string) {
 	sortedEntries := m.data.ReturnAllRecordsInSortedOrder()
+	fmt.Println(sortedEntries)
 	table := NewSSTable(filename)
 	table.writeEntriesToSST(sortedEntries)
 	m.clear()
@@ -31,5 +35,5 @@ func (m *Memtable) Flush(filename string) {
 func (m *Memtable) clear() {
 	// clear table once flushed to SSTable
 	m.data.root = nil
-	m.size = 0
+	m.sizeInBytes = 0
 }
