@@ -4,7 +4,6 @@ import (
 	"bitcask-go/utils"
 	"bytes"
 	"fmt"
-
 	//"bytes"
 	"errors"
 	"os"
@@ -64,13 +63,10 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 	//	}
 	//}
 
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
 	logFile, err := os.OpenFile("genesis_wal.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
-
-	ds.serverFile = file
 	ds.writeAheadLog = logFile
 
 	return ds, err
@@ -118,38 +114,17 @@ func (ds *DiskStore) Put(key string, value string) error {
 }
 
 func (ds *DiskStore) Get(key string) (string, error) {
-	/*
-		lookup key in keydir
-		if not exist:
-			return key not found
-		else:
-			create buffer the same size as the kv entry
-			read bytes from value position to valueSize
-			decode the buffer into a record
-			return record.Value
-	*/
-	keyEntry, err := ds.memtable.Get(key)
+	// look up key in memtable first, if not there-- search the SSTable(s)
+	record, err := ds.memtable.Get(key)
 	if err != nil {
+		// placeholder line, we will actually need to search the SSTables once implemented
 		return "", utils.ErrKeyNotFound
-	}
-	// EntrySize for "othello" -> "shakespeare"
-	// should be 35: headerSize(17) + keySize(7) + valueSize(11) = 35
-	entireEntry := make([]byte, keyEntry.EntrySize)
-
-	// read 35 bytes from the file starting from valuePosition (0 in this case)
-	ds.serverFile.ReadAt(entireEntry, int64(keyEntry.ValuePosition))
-
-	// ok now let's decode the entireEntry buffer into a record
-	record := Record{}
-	if decodeErr := record.DecodeKV(entireEntry); decodeErr != nil {
-		return "", utils.ErrDecodingKVFailed
 	}
 
 	return record.Value, nil
-	return "", nil
 }
 
-// !! This entire method will need to be reworked w/ RBTrees and SSTables
+// TODO: This entire method will need to be reworked w/ RBTrees and SSTables
 func (ds *DiskStore) Delete(key string) error {
 	// key note: this is an APPEND-ONLY db, so it wouldn't make sense to
 	// overwrite existing data and place a tombstone value there
@@ -197,7 +172,7 @@ func (ds *DiskStore) Close() bool {
 	return true
 }
 
-// !! Entire method will need to be reworked as we will be rebuilding from a write-ahead-log now and not keydir
+// TODO: Entire method will need to be reworked as we will be rebuilding from a write-ahead-log now and not keydir
 //func (ds *DiskStore) initKeyDir(existingFile string) error {
 //	file, _ := os.Open(existingFile)
 //	defer file.Close()
