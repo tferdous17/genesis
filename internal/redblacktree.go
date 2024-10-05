@@ -2,7 +2,6 @@ package internal
 
 import (
 	"bitcask-go/utils"
-	"fmt"
 )
 
 /*
@@ -178,16 +177,18 @@ func (tree *RedBlackTree) Find(key string) (Record, error) {
 	return Record{}, utils.ErrKeyNotFound
 }
 
-func (tree *RedBlackTree) Inorder() {
-	inorder(tree.root)
+func (tree *RedBlackTree) ReturnAllRecordsInSortedOrder() []Record {
+	data := inorder(tree.root, []Record{})
+	return data
 }
 
-func inorder(node *Node) {
+func inorder(node *Node, data []Record) []Record {
 	currentNode := node
 
 	if currentNode != nil {
-		inorder(currentNode.Left)
-		fmt.Println(currentNode)
-		inorder(currentNode.Right)
+		data = inorder(currentNode.Left, data)
+		data = append(data, currentNode.Value)
+		data = inorder(currentNode.Right, data)
 	}
+	return data
 }
