@@ -3,8 +3,10 @@ package internal
 import (
 	"bitcask-go/utils"
 	"bytes"
+	"fmt"
+
+	//"bytes"
 	"errors"
-	"io"
 	"os"
 	"time"
 )
@@ -33,9 +35,17 @@ type DiskStore struct {
 	// writePosition will tell us the current "cursor" position
 	// in the file to start reading from, default val is 0
 	writePosition int
-	// in-memory keydir that allows us to find the data we're looking for in disk
-	keyDir map[string]KeyEntry
+	memtable      *Memtable
+	writeAheadLog *os.File
 }
+
+type Operation int
+
+const (
+	PUT Operation = iota
+	GET
+	DELETE
+)
 
 func fileExists(fileName string) bool {
 	if _, err := os.Stat(fileName); errors.Is(err, os.ErrNotExist) {
@@ -45,30 +55,28 @@ func fileExists(fileName string) bool {
 }
 
 func NewDiskStore(fileName string) (*DiskStore, error) {
-	ds := &DiskStore{keyDir: make(map[string]KeyEntry)}
-	if fileExists(fileName) {
-		// populate keydir for existing store
-		err := ds.initKeyDir(fileName)
-		if err != nil {
-			return nil, utils.ErrKeyDirInit
-		}
-	}
+	ds := &DiskStore{memtable: NewMemtable()}
+	//if fileExists(fileName) {
+	//	// populate keydir for existing store
+	//	err := ds.initKeyDir(fileName)
+	//	if err != nil {
+	//		return nil, utils.ErrKeyDirInit
+	//	}
+	//}
 
 	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	logFile, err := os.OpenFile("genesis_wal.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
+
 	ds.serverFile = file
+	ds.writeAheadLog = logFile
 
 	return ds, err
 }
 
 func (ds *DiskStore) Put(key string, value string) error {
-	_, ok := ds.keyDir[key]
-	if ok {
-		return utils.ErrDuplicateKey
-	}
-
 	err := utils.ValidateKV(key, value)
 	if err != nil {
 		return err
@@ -90,18 +98,21 @@ func (ds *DiskStore) Put(key string, value string) error {
 	}
 	record.Header.CheckSum = record.CalculateChecksum()
 
+	// Store record in our memtable
+	ds.memtable.Put(key, record)
+
 	// encode the entire key, value entry
 	buf := new(bytes.Buffer)
+	buf.WriteByte(byte(PUT)) // Store operation as only 1 byte
 	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
 		return utils.ErrEncodingKVFailed
 	}
-
-	// write to disk
-	ds.writeToFile(buf.Bytes())
-
-	// now update keydir
-	ds.keyDir[key] = NewKeyEntry(header.TimeStamp, uint32(ds.writePosition), record.RecordSize)
-	ds.writePosition += int(record.RecordSize)
+	// store in WAL
+	logErr := ds.writeToFile(buf.Bytes(), ds.writeAheadLog)
+	if logErr != nil {
+		fmt.Println(logErr)
+	}
+	//ds.writePosition += int(record.RecordSize)
 
 	return nil
 }
@@ -117,11 +128,10 @@ func (ds *DiskStore) Get(key string) (string, error) {
 			decode the buffer into a record
 			return record.Value
 	*/
-	keyEntry, ok := ds.keyDir[key]
-	if !ok {
+	keyEntry, err := ds.memtable.Get(key)
+	if err != nil {
 		return "", utils.ErrKeyNotFound
 	}
-
 	// EntrySize for "othello" -> "shakespeare"
 	// should be 35: headerSize(17) + keySize(7) + valueSize(11) = 35
 	entireEntry := make([]byte, keyEntry.EntrySize)
@@ -136,8 +146,10 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	}
 
 	return record.Value, nil
+	return "", nil
 }
 
+// !! This entire method will need to be reworked w/ RBTrees and SSTables
 func (ds *DiskStore) Delete(key string) error {
 	// key note: this is an APPEND-ONLY db, so it wouldn't make sense to
 	// overwrite existing data and place a tombstone value there
@@ -185,66 +197,63 @@ func (ds *DiskStore) Close() bool {
 	return true
 }
 
-func (ds *DiskStore) initKeyDir(existingFile string) error {
-	file, _ := os.Open(existingFile)
-	defer file.Close()
+// !! Entire method will need to be reworked as we will be rebuilding from a write-ahead-log now and not keydir
+//func (ds *DiskStore) initKeyDir(existingFile string) error {
+//	file, _ := os.Open(existingFile)
+//	defer file.Close()
+//
+//	for {
+//		// read 12 bytes from our and store it into header
+//		header := make([]byte, headerSize)
+//		_, err := io.ReadFull(file, header)
+//
+//		// error above could be EOF or some other error, so handle either case
+//		if err == io.EOF {
+//			break
+//		}
+//		if err != nil {
+//			return err
+//		}
+//		// following func will decode the buffer into a Header{}
+//		h, err := NewHeader(header)
+//		if err != nil {
+//			return err
+//		}
+//		// read key, val into respective buffers
+//		key := make([]byte, h.KeySize)
+//		value := make([]byte, h.ValueSize)
+//
+//		_, keyErr := io.ReadFull(file, key)
+//		if keyErr != nil {
+//			return err
+//		}
+//
+//		_, valErr := io.ReadFull(file, value)
+//		if valErr != nil {
+//			return err
+//		}
+//		// total size of this key, val entry including header
+//		totalSize := headerSize + h.KeySize + h.ValueSize
+//		ds.keyDir[string(key)] = NewKeyEntry(h.TimeStamp, uint32(ds.writePosition), totalSize)
+//		ds.writePosition += int(totalSize)
+//	}
+//	return nil
+//}
 
-	for {
-		// read 12 bytes from our and store it into header
-		header := make([]byte, headerSize)
-		_, err := io.ReadFull(file, header)
-
-		// error above could be EOF or some other error, so handle either case
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		// following func will decode the buffer into a Header{}
-		h, err := NewHeader(header)
-		if err != nil {
-			return err
-		}
-		// read key, val into respective buffers
-		key := make([]byte, h.KeySize)
-		value := make([]byte, h.ValueSize)
-
-		_, keyErr := io.ReadFull(file, key)
-		if keyErr != nil {
-			return err
-		}
-
-		_, valErr := io.ReadFull(file, value)
-		if valErr != nil {
-			return err
-		}
-		// total size of this key, val entry including header
-		totalSize := headerSize + h.KeySize + h.ValueSize
-		ds.keyDir[string(key)] = NewKeyEntry(h.TimeStamp, uint32(ds.writePosition), totalSize)
-		ds.writePosition += int(totalSize)
-	}
-	return nil
-}
-
-func (ds *DiskStore) writeToFile(data []byte) error {
+func (ds *DiskStore) writeToFile(data []byte, file *os.File) error {
 	// i want to panic on these errors b/c its bad if our data isnt writing
-	if _, writeErr := ds.serverFile.Write(data); writeErr != nil {
+	if _, writeErr := file.Write(data); writeErr != nil {
 		panic(writeErr)
 	}
 	// VERY important to call Sync, b/c this flushes the in-memory buffer of our file to the disk
 	// this is what actually makes our data persist as the data is initially stored in said buffer
 	// before reaching disk
-	if syncErr := ds.serverFile.Sync(); syncErr != nil {
+	if syncErr := file.Sync(); syncErr != nil {
 		panic(syncErr)
 	}
 	return nil
 }
 
-func (ds *DiskStore) ListOfAllKeys() []string {
-	list := make([]string, 0, len(ds.keyDir))
-	for k, _ := range ds.keyDir {
-		list = append(list, k)
-	}
-	return list
+func (ds *DiskStore) ListOfAllKeys() {
+	ds.memtable.PrintAllRecords()
 }
