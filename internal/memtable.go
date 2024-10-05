@@ -8,10 +8,14 @@ func NewMemtable() *Memtable {
 	return &Memtable{RedBlackTree{root: nil}}
 }
 
-func (m *Memtable) Put(key string, value KeyEntry) {
+func (m *Memtable) Put(key string, value Record) {
 	m.data.Insert(key, value)
 }
 
-func (m *Memtable) Get(key string) (KeyEntry, error) {
+func (m *Memtable) Get(key string) (Record, error) {
 	return m.data.Find(key)
+}
+
+func (m *Memtable) PrintAllRecords() {
+	m.data.Inorder()
 }

@@ -20,7 +20,7 @@ const (
 
 type Node struct {
 	Key    string
-	Value  KeyEntry
+	Value  Record
 	Parent *Node
 	Left   *Node
 	Right  *Node
@@ -31,7 +31,7 @@ type RedBlackTree struct {
 	root *Node
 }
 
-func (tree *RedBlackTree) Insert(key string, value KeyEntry) {
+func (tree *RedBlackTree) Insert(key string, value Record) {
 	node := &Node{Key: key, Value: value, Color: RED}
 
 	if tree.root == nil { // If tree is empty
@@ -162,7 +162,7 @@ func (tree *RedBlackTree) rotateLeft(node *Node) {
 	node.Parent = rightChild
 }
 
-func (tree *RedBlackTree) Find(key string) (KeyEntry, error) {
+func (tree *RedBlackTree) Find(key string) (Record, error) {
 	// basic BST search
 	currentNode := tree.root
 	for currentNode != nil {
@@ -175,7 +175,7 @@ func (tree *RedBlackTree) Find(key string) (KeyEntry, error) {
 			currentNode = currentNode.Right
 		}
 	}
-	return KeyEntry{}, utils.ErrKeyNotFound
+	return Record{}, utils.ErrKeyNotFound
 }
 
 func (tree *RedBlackTree) Inorder() {
