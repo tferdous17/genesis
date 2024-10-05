@@ -19,6 +19,7 @@ Features in the works:
     - [ ] Reconstruct memtable with WAL in case of crash
   - [ ] Implement SSTables
     - [x] Flush memtable to data file in sorted order
+      - [ ] Periodic and/or conditional flushing
     - [ ] Index file
     - [ ] Bloom filter
     - [ ] Multiple levels
