@@ -21,37 +21,44 @@ type SSTable struct {
 	sstCounter uint32
 }
 
-func NewSSTable(filename string) *SSTable {
-	dataFile, indexFile := initializeFromDisk(filename)
+// InitSSTableOnDisk directory to store sstable, (sorted) entries to store in said table
+func InitSSTableOnDisk(directory string, entries []Record) {
 	atomic.AddUint32(&sstTableCounter, 1)
-	return &SSTable{
-		dataFile:   dataFile,
-		indexFile:  indexFile,
+	table := &SSTable{
 		sstCounter: sstTableCounter,
 	}
+	table.initTableFiles(directory)
+	writeEntriesToSST(entries, table.dataFile)
 }
 
-func initializeFromDisk(filename string) (*os.File, *os.File) {
+func (sst *SSTable) initTableFiles(directory string) {
+	// Create "storage" folder with read-write-execute for owner & group, read-only for others
+	if err := os.MkdirAll("../storage", 0755); err != nil {
+		fmt.Println("mkdir err", err)
+	}
+
 	// create data and index files
-	dataFile, err := os.OpenFile(filename+DATA_FILE_EXTENSION, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
-	indexFile, err := os.OpenFile(filename+INDEX_FILE_EXTENSION, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	dataFile, _ := os.Create(sst.getNextSstFilename(directory) + DATA_FILE_EXTENSION)
+	indexFile, err := os.Create(sst.getNextSstFilename(directory) + INDEX_FILE_EXTENSION)
+
 	if err != nil {
 		fmt.Println("init file err", err)
 	}
-	return dataFile, indexFile
+
+	sst.dataFile, sst.indexFile = dataFile, indexFile
 }
 
 func (sst *SSTable) getNextSstFilename(directory string) string {
-	return fmt.Sprintf("%s/sst_%d", directory, sst.sstCounter)
+	return fmt.Sprintf("../%s/sst_%d", directory, sst.sstCounter)
 }
 
-func (sst *SSTable) writeEntriesToSST(entries []Record) {
+func writeEntriesToSST(entries []Record, dataFile *os.File) {
 	buf := new(bytes.Buffer)
 	for i := range entries {
 		entries[i].EncodeKV(buf)
 	}
 	// after encoding each entry, dump into the SSTable
-	if err := utils.WriteToFile(buf.Bytes(), sst.dataFile); err != nil {
+	if err := utils.WriteToFile(buf.Bytes(), dataFile); err != nil {
 		fmt.Println("write to sst err:", err)
 	}
 }
