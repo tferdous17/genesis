@@ -3,14 +3,17 @@ package internal
 import (
 	"bitcask-go/utils"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"sync/atomic"
 )
 
 const (
-	DATA_FILE_EXTENSION  string = ".data"
-	INDEX_FILE_EXTENSION string = ".index"
+	DataFileExtension  string = ".data"
+	IndexFileExtension string = ".index"
+
+	SparseIndexSampleSize int = 100
 )
 
 var sstTableCounter uint32
@@ -27,19 +30,19 @@ func InitSSTableOnDisk(directory string, entries []Record) {
 	table := &SSTable{
 		sstCounter: sstTableCounter,
 	}
-	table.initTableFiles(directory)
-	writeEntriesToSST(entries, table.dataFile)
+	table.InitTableFiles(directory)
+	writeEntriesToSST(entries, table.dataFile, table.indexFile)
 }
 
-func (sst *SSTable) initTableFiles(directory string) {
+func (sst *SSTable) InitTableFiles(directory string) {
 	// Create "storage" folder with read-write-execute for owner & group, read-only for others
 	if err := os.MkdirAll("../storage", 0755); err != nil {
 		fmt.Println("mkdir err", err)
 	}
 
 	// create data and index files
-	dataFile, _ := os.Create(sst.getNextSstFilename(directory) + DATA_FILE_EXTENSION)
-	indexFile, err := os.Create(sst.getNextSstFilename(directory) + INDEX_FILE_EXTENSION)
+	dataFile, _ := os.Create(getNextSstFilename(directory, sst.sstCounter) + DataFileExtension)
+	indexFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + IndexFileExtension)
 
 	if err != nil {
 		fmt.Println("init file err", err)
@@ -48,17 +51,52 @@ func (sst *SSTable) initTableFiles(directory string) {
 	sst.dataFile, sst.indexFile = dataFile, indexFile
 }
 
-func (sst *SSTable) getNextSstFilename(directory string) string {
-	return fmt.Sprintf("../%s/sst_%d", directory, sst.sstCounter)
+func getNextSstFilename(directory string, sstCounter uint32) string {
+	return fmt.Sprintf("../%s/sst_%d", directory, sstCounter)
 }
 
-func writeEntriesToSST(entries []Record, dataFile *os.File) {
+type sparseIndex struct {
+	keySize    uint32
+	key        string
+	byteOffset uint32
+}
+
+func writeEntriesToSST(entries []Record, dataFile *os.File, indexFile *os.File) {
 	buf := new(bytes.Buffer)
+	var sparseKeys []sparseIndex
+	var byteOffsetCounter uint32
+
+	// * every 100th key will be put into the sparse index
 	for i := range entries {
+		if i%SparseIndexSampleSize == 0 {
+			sparseKeys = append(sparseKeys, sparseIndex{
+				keySize:    entries[i].Header.KeySize,
+				key:        entries[i].Key,
+				byteOffset: byteOffsetCounter,
+			})
+		}
+		byteOffsetCounter += entries[i].RecordSize
 		entries[i].EncodeKV(buf)
 	}
-	// after encoding each entry, dump into the SSTable
+
+	// after encoding all entries, dump into the SSTable
 	if err := utils.WriteToFile(buf.Bytes(), dataFile); err != nil {
 		fmt.Println("write to sst err:", err)
+	}
+	populateSparseIndex(sparseKeys, indexFile)
+}
+
+func populateSparseIndex(indices []sparseIndex, indexFile *os.File) {
+	// encode and write to index file
+	buf := new(bytes.Buffer)
+	for i := range indices {
+		binary.Write(buf, binary.LittleEndian, &indices[i].keySize)
+		buf.WriteString(indices[i].key)
+		binary.Write(buf, binary.LittleEndian, &indices[i].byteOffset)
+	}
+	fmt.Println(buf.Bytes())
+
+	if err := utils.WriteToFile(buf.Bytes(), indexFile); err != nil {
+		fmt.Println("write to indexfile err:", err)
 	}
 }
