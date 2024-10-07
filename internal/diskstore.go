@@ -73,6 +73,11 @@ func NewDiskStore(fileName string) (*DiskStore, error) {
 }
 
 func (ds *DiskStore) Put(key string, value string) error {
+	// This check is to prevent writes occurring while memtable is locked and flushing to disk
+	if ds.memtable.locked {
+		return utils.ErrMemtableLocked
+	}
+
 	err := utils.ValidateKV(key, value)
 	if err != nil {
 		return err
@@ -99,17 +104,17 @@ func (ds *DiskStore) Put(key string, value string) error {
 
 	// encode the entire key, value entry
 	buf := new(bytes.Buffer)
-	buf.WriteByte(byte(PUT)) // Store operation as only 1 byte
+	// Store operation as only 1 byte (only WAL entries will have this extra byte)
+	buf.WriteByte(byte(PUT))
 	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
 		return utils.ErrEncodingKVFailed
 	}
 	// store in WAL
-	logErr := ds.writeToFile(buf.Bytes(), ds.writeAheadLog)
+	logErr := utils.WriteToFile(buf.Bytes(), ds.writeAheadLog)
 	if logErr != nil {
 		fmt.Println(logErr)
 	}
 	//ds.writePosition += int(record.RecordSize)
-
 	return nil
 }
 
@@ -125,43 +130,43 @@ func (ds *DiskStore) Get(key string) (string, error) {
 }
 
 // TODO: This entire method will need to be reworked w/ RBTrees and SSTables
-func (ds *DiskStore) Delete(key string) error {
-	// key note: this is an APPEND-ONLY db, so it wouldn't make sense to
-	// overwrite existing data and place a tombstone value there
-	// thus we have to write a semi-copy of the record w/ the tombstone val activated
-
-	_, ok := ds.keyDir[key]
-	if !ok {
-		return utils.ErrKeyNotFound
-	}
-
-	tempVal := ""
-	header := Header{
-		CheckSum:  0,
-		TimeStamp: uint32(time.Now().Unix()),
-		KeySize:   uint32(len(key)),
-		ValueSize: uint32(len(tempVal)),
-	}
-	header.MarkTombstone()
-
-	record := Record{
-		Header:     header,
-		Key:        key,
-		Value:      tempVal,
-		RecordSize: headerSize + header.KeySize + header.ValueSize,
-	}
-	record.Header.CheckSum = record.CalculateChecksum()
-
-	buf := new(bytes.Buffer)
-	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
-		return utils.ErrEncodingKVFailed
-	}
-	ds.writeToFile(buf.Bytes())
-
-	delete(ds.keyDir, key)
-
-	return nil
-}
+//func (ds *DiskStore) Delete(key string) error {
+//	//key note: this is an APPEND-ONLY db, so it wouldn't make sense to
+//	//overwrite existing data and place a tombstone value there
+//	//thus we have to write a semi-copy of the record w/ the tombstone val activated
+//
+//	_, ok := ds.keyDir[key]
+//	if !ok {
+//		return utils.ErrKeyNotFound
+//	}
+//
+//	tempVal := ""
+//	header := Header{
+//		CheckSum:  0,
+//		TimeStamp: uint32(time.Now().Unix()),
+//		KeySize:   uint32(len(key)),
+//		ValueSize: uint32(len(tempVal)),
+//	}
+//	header.MarkTombstone()
+//
+//	record := Record{
+//		Header:     header,
+//		Key:        key,
+//		Value:      tempVal,
+//		RecordSize: headerSize + header.KeySize + header.ValueSize,
+//	}
+//	record.Header.CheckSum = record.CalculateChecksum()
+//
+//	buf := new(bytes.Buffer)
+//	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
+//		return utils.ErrEncodingKVFailed
+//	}
+//	ds.writeToFile(buf.Bytes())
+//
+//	delete(ds.keyDir, key)
+//
+//	return nil
+//}
 
 func (ds *DiskStore) Close() bool {
 	// important to actually write to disk thru Sync() first
@@ -215,20 +220,15 @@ func (ds *DiskStore) Close() bool {
 //	return nil
 //}
 
-func (ds *DiskStore) writeToFile(data []byte, file *os.File) error {
-	// i want to panic on these errors b/c its bad if our data isnt writing
-	if _, writeErr := file.Write(data); writeErr != nil {
-		panic(writeErr)
-	}
-	// VERY important to call Sync, b/c this flushes the in-memory buffer of our file to the disk
-	// this is what actually makes our data persist as the data is initially stored in said buffer
-	// before reaching disk
-	if syncErr := file.Sync(); syncErr != nil {
-		panic(syncErr)
-	}
-	return nil
-}
-
 func (ds *DiskStore) ListOfAllKeys() {
 	ds.memtable.PrintAllRecords()
+}
+
+func (ds *DiskStore) FlushMemtable() {
+	// ideally we should flush our memtable based on file size (i.e., 1 KB or something at least for testing)
+	// start flushing process
+	if ds.memtable.sizeInBytes >= 1000 {
+		fmt.Println(ds.memtable.sizeInBytes)
+		ds.memtable.Flush("storage")
+	}
 }

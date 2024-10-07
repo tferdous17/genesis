@@ -16,4 +16,6 @@ var (
 
 	ErrEncodingKVFailed = errors.New("encoding fail: failed to encode kv")
 	ErrDecodingKVFailed = errors.New("decoding fail: failed to decode kv")
+
+	ErrMemtableLocked = errors.New("memtable fail: currently locked for further operations")
 )

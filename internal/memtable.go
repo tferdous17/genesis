@@ -1,14 +1,13 @@
 package internal
 
-import "fmt"
-
 type Memtable struct {
 	data        RedBlackTree
+	locked      bool
 	sizeInBytes uint32
 }
 
 func NewMemtable() *Memtable {
-	return &Memtable{RedBlackTree{root: nil}, 0}
+	return &Memtable{RedBlackTree{root: nil}, false, 0}
 }
 
 func (m *Memtable) Put(key string, value Record) {
@@ -24,16 +23,16 @@ func (m *Memtable) PrintAllRecords() {
 
 }
 
-func (m *Memtable) Flush(filename string) {
+func (m *Memtable) Flush(directory string) {
+	m.locked = true // lock to prevent operations during flushing process
 	sortedEntries := m.data.ReturnAllRecordsInSortedOrder()
-	fmt.Println(sortedEntries)
-	table := NewSSTable(filename)
-	table.writeEntriesToSST(sortedEntries)
+	InitSSTableOnDisk(directory, sortedEntries)
 	m.clear()
 }
 
 func (m *Memtable) clear() {
-	// clear table once flushed to SSTable
+	// clear memtable once flushed to SSTable
 	m.data.root = nil
 	m.sizeInBytes = 0
+	m.locked = false
 }
