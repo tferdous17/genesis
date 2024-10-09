@@ -36,6 +36,7 @@ type DiskStore struct {
 	writePosition int
 	memtable      *Memtable
 	writeAheadLog *os.File
+	levels        [][]SSTable
 }
 
 type Operation int
@@ -53,7 +54,7 @@ func fileExists(fileName string) bool {
 	return true
 }
 
-func NewDiskStore(fileName string) (*DiskStore, error) {
+func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable()}
 	//if fileExists(fileName) {
 	//	// populate keydir for existing store
@@ -177,58 +178,29 @@ func (ds *DiskStore) Close() bool {
 	return true
 }
 
-// TODO: Entire method will need to be reworked as we will be rebuilding from a write-ahead-log now and not keydir
-//func (ds *DiskStore) initKeyDir(existingFile string) error {
-//	file, _ := os.Open(existingFile)
-//	defer file.Close()
-//
-//	for {
-//		// read 12 bytes from our and store it into header
-//		header := make([]byte, headerSize)
-//		_, err := io.ReadFull(file, header)
-//
-//		// error above could be EOF or some other error, so handle either case
-//		if err == io.EOF {
-//			break
-//		}
-//		if err != nil {
-//			return err
-//		}
-//		// following func will decode the buffer into a Header{}
-//		h, err := NewHeader(header)
-//		if err != nil {
-//			return err
-//		}
-//		// read key, val into respective buffers
-//		key := make([]byte, h.KeySize)
-//		value := make([]byte, h.ValueSize)
-//
-//		_, keyErr := io.ReadFull(file, key)
-//		if keyErr != nil {
-//			return err
-//		}
-//
-//		_, valErr := io.ReadFull(file, value)
-//		if valErr != nil {
-//			return err
-//		}
-//		// total size of this key, val entry including header
-//		totalSize := headerSize + h.KeySize + h.ValueSize
-//		ds.keyDir[string(key)] = NewKeyEntry(h.TimeStamp, uint32(ds.writePosition), totalSize)
-//		ds.writePosition += int(totalSize)
-//	}
-//	return nil
-//}
-
 func (ds *DiskStore) ListOfAllKeys() {
 	ds.memtable.PrintAllRecords()
 }
 
+// ? Flush in separate goroutine?
+var counter int = 0
+
 func (ds *DiskStore) FlushMemtable() {
-	// ideally we should flush our memtable based on file size (i.e., 1 KB or something at least for testing)
-	// start flushing process
-	if ds.memtable.sizeInBytes >= 1000 {
-		fmt.Println(ds.memtable.sizeInBytes)
-		ds.memtable.Flush("storage")
+	if ds.memtable.sizeInBytes >= 800 {
+		counter++
+		fmt.Printf("SIZE AT TIME OF FLUSHING (#%d): %d\n", counter, ds.memtable.sizeInBytes)
+		sstable := ds.memtable.Flush("storage")
+		// ! levels is empty. so we cant append to a nonexistent index
+		if len(ds.levels) == 0 {
+			ds.levels = append(ds.levels, []SSTable{*sstable})
+		} else {
+			ds.levels[0] = append(ds.levels[0], *sstable)
+		}
 	}
+}
+
+func (ds *DiskStore) DebugMemtable() {
+	fmt.Println("DATA:", ds.memtable.data.ReturnAllRecordsInSortedOrder())
+	fmt.Println("CURRENT SIZE:", ds.memtable.sizeInBytes)
+	fmt.Println()
 }
