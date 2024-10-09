@@ -23,11 +23,13 @@ func (m *Memtable) PrintAllRecords() {
 
 }
 
-func (m *Memtable) Flush(directory string) {
+func (m *Memtable) Flush(directory string) *SSTable {
 	m.locked = true // lock to prevent operations during flushing process
 	sortedEntries := m.data.ReturnAllRecordsInSortedOrder()
-	InitSSTableOnDisk(directory, sortedEntries)
+	table := InitSSTableOnDisk(directory, sortedEntries)
 	m.clear()
+
+	return table
 }
 
 func (m *Memtable) clear() {
