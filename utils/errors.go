@@ -9,7 +9,7 @@ var (
 
 	ErrEmptyValue = errors.New("invalid value: value can not be empty")
 
-	ErrKeyDirInit = errors.New("error initializing keydir")
+	ErrFileInit = errors.New("error initializing file")
 
 	ErrEncodingHeaderFailed = errors.New("encoding fail: failed to encode header")
 	ErrDecodingHeaderFailed = errors.New("decoding fail: failed to decode header")
@@ -18,4 +18,6 @@ var (
 	ErrDecodingKVFailed = errors.New("decoding fail: failed to decode kv")
 
 	ErrMemtableLocked = errors.New("memtable fail: currently locked for further operations")
+
+	ErrKeyNotWithinTable = errors.New("sstable: key not within table's range")
 )
