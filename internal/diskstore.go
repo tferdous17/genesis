@@ -120,14 +120,24 @@ func (ds *DiskStore) Put(key string, value string) error {
 }
 
 func (ds *DiskStore) Get(key string) (string, error) {
-	// look up key in memtable first, if not there-- search the SSTable(s)
+	// * Search memtable first, if not there -> search SSTables on disk
 	record, err := ds.memtable.Get(key)
-	if err != nil {
-		// placeholder line, we will actually need to search the SSTables once implemented
-		return "", utils.ErrKeyNotFound
+	if err == nil {
+		return record.Value, nil
+	} else if !errors.Is(err, utils.ErrKeyNotFound) {
+		return "<!>", err
+	} // else err is KeyNotFound
+
+	// ! key not found in memtable, search SSTables on disk
+	for i := range ds.levels[0] {
+		value, err := ds.levels[0][i].Get(key)
+		if errors.Is(err, utils.ErrKeyNotWithinTable) {
+			continue
+		}
+		return value, err
 	}
 
-	return record.Value, nil
+	return "<!not_found>", utils.ErrKeyNotFound
 }
 
 // TODO: This entire method will need to be reworked w/ RBTrees and SSTables
