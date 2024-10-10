@@ -3,9 +3,8 @@ package internal
 import (
 	"bitcask-go/utils"
 	"bytes"
-	"fmt"
-	//"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 )
@@ -129,14 +128,14 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	} // else err is KeyNotFound
 
 	// ! key not found in memtable, search SSTables on disk
-	for i := range ds.levels[0] {
+	// * search the most RECENT sstable first
+	for i := len(ds.levels[0]) - 1; i >= 0; i-- {
 		value, err := ds.levels[0][i].Get(key)
 		if errors.Is(err, utils.ErrKeyNotWithinTable) {
 			continue
 		}
 		return value, err
 	}
-
 	return "<!not_found>", utils.ErrKeyNotFound
 }
 
@@ -198,7 +197,7 @@ var counter int = 0
 func (ds *DiskStore) FlushMemtable() {
 	if ds.memtable.sizeInBytes >= 800 {
 		counter++
-		fmt.Printf("SIZE AT TIME OF FLUSHING (#%d): %d\n", counter, ds.memtable.sizeInBytes)
+		utils.Logf("SIZE AT TIME OF FLUSHING (#%d): %d\n", counter, int(ds.memtable.sizeInBytes))
 		sstable := ds.memtable.Flush("storage")
 		// ! levels is empty. so we cant append to a nonexistent index
 		if len(ds.levels) == 0 {
@@ -210,7 +209,6 @@ func (ds *DiskStore) FlushMemtable() {
 }
 
 func (ds *DiskStore) DebugMemtable() {
-	fmt.Println("DATA:", ds.memtable.data.ReturnAllRecordsInSortedOrder())
-	fmt.Println("CURRENT SIZE:", ds.memtable.sizeInBytes)
-	fmt.Println()
+	utils.Logf("DATA:", ds.memtable.data.ReturnAllRecordsInSortedOrder())
+	utils.Logf("CURRENT SIZE:", ds.memtable.sizeInBytes)
 }
