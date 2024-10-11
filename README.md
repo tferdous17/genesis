@@ -5,7 +5,6 @@ Built purely for educational purposes.
 
 Features in the works:
 - [x] Serialize/Deserialize header + key, value
-- [x] Implement in-memory hashtable (keydir)
 - [x] Store data on disk
 - [x] Support Put(Key, Value)
 - [x] Support Get(Key)
@@ -20,10 +19,10 @@ Features in the works:
   - [ ] Implement SSTables
     - [x] Flush memtable to data file in sorted order
       - [ ] Periodic and/or conditional flushing
-    - [ ] Index file
+    - [x] Index file
     - [ ] Bloom filter
     - [ ] Multiple levels
-    - [ ] Get(key) operation on tables
+    - [x] Get(key) operation on tables
     - [ ] Compaction
 - [ ] Generic key/value support (currently limited to strings)
 - [ ] Make this distributed
