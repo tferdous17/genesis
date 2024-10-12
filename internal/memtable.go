@@ -1,40 +1,83 @@
 package internal
 
+import (
+	"bitcask-go/utils"
+	"fmt"
+	rbt "github.com/emirpasic/gods/trees/redblacktree"
+)
+
 type Memtable struct {
-	data        RedBlackTree
+	data        *rbt.Tree
 	locked      bool
 	sizeInBytes uint32
 }
 
 func NewMemtable() *Memtable {
-	return &Memtable{RedBlackTree{root: nil}, false, 0}
+	return &Memtable{
+		rbt.NewWithStringComparator(),
+		false,
+		0,
+	}
 }
 
+var recCounter int = 0
+
 func (m *Memtable) Put(key string, value Record) {
-	m.data.Insert(key, value)
+	m.data.Put(key, value)
+	recCounter++
 	m.sizeInBytes += value.RecordSize
 }
 
 func (m *Memtable) Get(key string) (Record, error) {
-	return m.data.Find(key)
+	val, found := m.data.Get(key)
+	if !found {
+		return Record{}, utils.ErrKeyNotFound
+	}
+	return val.(Record), nil
 }
 
 func (m *Memtable) PrintAllRecords() {
-
+	fmt.Println(m.returnAllRecordsInSortedOrder())
 }
 
 func (m *Memtable) Flush(directory string) *SSTable {
 	m.locked = true // lock to prevent operations during flushing process
-	sortedEntries := m.data.ReturnAllRecordsInSortedOrder()
-	table := InitSSTableOnDisk(directory, sortedEntries)
+	sortedEntries := m.returnAllRecordsInSortedOrder()
+	table := InitSSTableOnDisk(directory, castToRecordSlice(sortedEntries))
 	m.clear()
 
 	return table
 }
 
+func (m *Memtable) returnAllRecordsInSortedOrder() []interface{} {
+	data := inorderRBT(m.data.Root, make([]interface{}, 0))
+	return data
+}
+
+func inorderRBT(node *rbt.Node, data []interface{}) []interface{} {
+	if node != nil {
+		data = inorderRBT(node.Left, data)
+		data = append(data, node.Value)
+		data = inorderRBT(node.Right, data)
+	}
+	return data
+}
+
 func (m *Memtable) clear() {
 	// clear memtable once flushed to SSTable
-	m.data.root = nil
+	m.data.Clear()
 	m.sizeInBytes = 0
 	m.locked = false
+}
+
+func castToRecordSlice(interfaceSlice []interface{}) []Record {
+	recordSlice := make([]Record, len(interfaceSlice))
+	for i, iface := range interfaceSlice {
+		record, ok := iface.(Record)
+		if !ok {
+			fmt.Errorf("element %d is not a Record", i)
+		}
+		recordSlice[i] = record
+	}
+	return recordSlice
 }
