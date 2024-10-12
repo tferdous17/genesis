@@ -162,7 +162,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 			// * return early
 			// * this works b/c since our data is sorted, if the curr key is > target key,
 			// * ..then the key is not in this table
-			return "<!>", utils.ErrKeyNotFound
+			return "<!>", utils.ErrKeyNotWithinTable
 		} else {
 			// * else, need to keep iterating & looking
 			currOffset += r.Header.KeySize + r.Header.ValueSize
