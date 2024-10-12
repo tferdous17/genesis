@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync/atomic"
 )
 
@@ -93,6 +94,7 @@ func writeEntriesToSST(sortedEntries []Record, table *SSTable) {
 	if err := utils.WriteToFile(buf.Bytes(), table.dataFile); err != nil {
 		fmt.Println("write to sst err:", err)
 	}
+	utils.Logf("SPARSE KEYS: %v", table.sparseKeys)
 	populateSparseIndexFile(table.sparseKeys, table.indexFile)
 }
 
@@ -115,7 +117,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 		return "<!>", utils.ErrKeyNotWithinTable
 	}
 	// * Get sparse index and move to offset
-	currOffset := sst.getCandidateByteOffset(key)
+	currOffset := sst.sparseKeys[sst.getCandidateByteOffsetIndex(key)].byteOffset
 	if _, err := sst.dataFile.Seek(int64(currOffset), 0); err != nil {
 		return "", err
 	}
@@ -129,7 +131,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 		_, err := io.ReadFull(sst.dataFile, currEntry)
 		if errors.Is(err, io.EOF) {
 			eofErr = err
-			fmt.Println("LOG: END OF FILE")
+			utils.Log("END OF FILE")
 			return "EOF", err
 		}
 
@@ -142,47 +144,52 @@ func (sst *SSTable) Get(key string) (string, error) {
 		// * set up []byte for the rest of the record
 		currRecord := make([]byte, h.KeySize+h.ValueSize)
 		if _, err := io.ReadFull(sst.dataFile, currRecord); err != nil {
-			fmt.Println("LOG: READFULL ERR:", err)
+			fmt.Println("READFULL ERR:", err)
 			return "", err
 		}
 		// * append both []byte together in order to decode as a whole
 		currEntry = append(currEntry, currRecord...) // full size of the record
 		r := &Record{}
 		r.DecodeKV(currEntry)
+		utils.Logf("LOOKING AT RECORD: %v", r)
 
 		if r.Key == key {
-			fmt.Printf("LOG: FOUND KEY %s -> %s\n", key, r.Value)
+			utils.LogGREEN("FOUND KEY %s -> VALUE %s\n", key, r.Value)
 			keyFound = true
 			return r.Value, nil
 		} else if r.Key > key {
-			fmt.Println("LOG: SEARCH OVEREXTENSION, RETURNING AS KEY NOT FOUND.")
+			utils.Log("SEARCH OVEREXTENSION, RETURNING AS KEY NOT FOUND")
 			// * return early
 			// * this works b/c since our data is sorted, if the curr key is > target key,
 			// * ..then the key is not in this table
 			return "<!>", utils.ErrKeyNotFound
+		} else {
+			// * else, need to keep iterating & looking
+			currOffset += r.Header.KeySize + r.Header.ValueSize
+			sst.dataFile.Seek(int64(currOffset), 0)
 		}
 
-		// * else, need to keep iterating & looking
-		currOffset += r.Header.KeySize + r.Header.ValueSize
-		sst.dataFile.Seek(int64(currOffset), 0)
 	}
 
 	return "<!>", utils.ErrKeyNotFound
 }
 
-func (sst *SSTable) getCandidateByteOffset(target string) uint32 {
+func (sst *SSTable) getCandidateByteOffsetIndex(targetKey string) int {
 	low := 0
 	high := len(sst.sparseKeys) - 1
 
-	for low < high {
+	for low <= high {
 		mid := (low + high) / 2
-		if target < sst.sparseKeys[mid].key {
-			high = mid - 1
-		} else if target > sst.sparseKeys[mid].key {
+
+		cmp := strings.Compare(targetKey, sst.sparseKeys[mid].key)
+		if cmp > 0 { // targetKey > sparseKeys[mid]
 			low = mid + 1
-		} else {
-			return sst.sparseKeys[mid].byteOffset
+		} else if cmp < 0 { // targetKey < sparseKeys[mid]
+			high = mid - 1
+		} else { // equal
+			return mid
 		}
 	}
-	return sst.sparseKeys[low].byteOffset
+	utils.Logf("CANDIDATE BYTE OFFSET: %d AT INDEX %d", sst.sparseKeys[low].byteOffset, uint32(low))
+	return low - 1
 }
