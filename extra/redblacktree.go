@@ -1,6 +1,7 @@
-package internal
+package extra
 
 import (
+	"bitcask-go/internal"
 	"bitcask-go/utils"
 )
 
@@ -9,28 +10,29 @@ Our memtable will use a Red-Black tree as its under-the-hood implementation
 Meant to replace our original hash-table
 */
 
-type color int
+type nodeColor int
 
 // Red = 0, Black = 1
 const (
-	RED color = iota
+	RED nodeColor = iota
 	BLACK
 )
 
 type Node struct {
 	Key    string
-	Value  Record
+	Value  internal.Record
 	Parent *Node
 	Left   *Node
 	Right  *Node
-	Color  color
+	Color  nodeColor
 }
 
 type RedBlackTree struct {
 	root *Node
+	size uint32
 }
 
-func (tree *RedBlackTree) Insert(key string, value Record) {
+func (tree *RedBlackTree) Insert(key string, value internal.Record) {
 	node := &Node{Key: key, Value: value, Color: RED}
 
 	if tree.root == nil { // If tree is empty
@@ -56,6 +58,7 @@ func (tree *RedBlackTree) Insert(key string, value Record) {
 			parentNode.Right = node
 		}
 	}
+	tree.size++
 	// Since this insertion may have violated RBT properties, we need to fix it
 	tree.fixInsert(node)
 }
@@ -161,7 +164,7 @@ func (tree *RedBlackTree) rotateLeft(node *Node) {
 	node.Parent = rightChild
 }
 
-func (tree *RedBlackTree) Find(key string) (Record, error) {
+func (tree *RedBlackTree) Find(key string) (internal.Record, error) {
 	// basic BST search
 	currentNode := tree.root
 	for currentNode != nil {
@@ -174,21 +177,23 @@ func (tree *RedBlackTree) Find(key string) (Record, error) {
 			currentNode = currentNode.Right
 		}
 	}
-	return Record{}, utils.ErrKeyNotFound
+	return internal.Record{}, utils.ErrKeyNotFound
 }
 
-func (tree *RedBlackTree) ReturnAllRecordsInSortedOrder() []Record {
-	data := inorder(tree.root, []Record{})
+func (tree *RedBlackTree) ReturnAllRecordsInSortedOrder() []internal.Record {
+	data := inorder(tree.root, []internal.Record{})
 	return data
 }
 
-func inorder(node *Node, data []Record) []Record {
-	currentNode := node
-
-	if currentNode != nil {
-		data = inorder(currentNode.Left, data)
-		data = append(data, currentNode.Value)
-		data = inorder(currentNode.Right, data)
+func inorder(node *Node, data []internal.Record) []internal.Record {
+	if node != nil {
+		data = inorder(node.Left, data)
+		data = append(data, node.Value)
+		data = inorder(node.Right, data)
 	}
 	return data
+}
+
+func (tree *RedBlackTree) ReturnSizeOfTree() uint32 {
+	return tree.size
 }
