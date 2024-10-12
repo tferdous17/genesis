@@ -6,10 +6,31 @@ import (
 	"reflect"
 )
 
-func Log[T any](msg string, args ...T) {
+func Log(msg string) {
+	logger.Println(color.MagentaString(msg))
+}
+
+func Logf[T any](msg string, args ...T) {
 	values := make([]interface{}, len(args))
 	for i, arg := range args {
 		values[i] = reflect.ValueOf(arg).Interface()
 	}
+
 	logger.Printf(color.MagentaString(msg), values...)
+}
+
+func LogGREEN[T any](msg string, args ...T) {
+	values := make([]interface{}, len(args))
+	for i, arg := range args {
+		values[i] = reflect.ValueOf(arg).Interface()
+	}
+	logger.Printf(color.GreenString(msg), values...)
+}
+
+func LogCYAN[T any](msg string, args ...T) {
+	values := make([]interface{}, len(args))
+	for i, arg := range args {
+		values[i] = reflect.ValueOf(arg).Interface()
+	}
+	logger.Printf(color.CyanString(msg), values...)
 }
