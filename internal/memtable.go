@@ -8,14 +8,12 @@ import (
 
 type Memtable struct {
 	data        *rbt.Tree
-	locked      bool
 	sizeInBytes uint32
 }
 
 func NewMemtable() *Memtable {
 	return &Memtable{
 		rbt.NewWithStringComparator(),
-		false,
 		0,
 	}
 }
@@ -41,10 +39,8 @@ func (m *Memtable) PrintAllRecords() {
 }
 
 func (m *Memtable) Flush(directory string) *SSTable {
-	m.locked = true // lock to prevent operations during flushing process
 	sortedEntries := m.returnAllRecordsInSortedOrder()
 	table := InitSSTableOnDisk(directory, castToRecordSlice(sortedEntries))
-	m.clear()
 
 	return table
 }
@@ -67,7 +63,6 @@ func (m *Memtable) clear() {
 	// clear memtable once flushed to SSTable
 	m.data.Clear()
 	m.sizeInBytes = 0
-	m.locked = false
 }
 
 func castToRecordSlice(interfaceSlice []interface{}) []Record {
