@@ -10,9 +10,10 @@ import (
 )
 
 type DiskStore struct {
-	memtable      *Memtable
-	writeAheadLog *os.File
-	levels        [][]SSTable
+	memtable           *Memtable
+	writeAheadLog      *os.File
+	levels             [][]SSTable
+	immutableMemtables []Memtable
 }
 
 type Operation int
@@ -22,6 +23,8 @@ const (
 	GET
 	DELETE
 )
+
+const FlushSizeThreshold = 15000
 
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable()}
@@ -36,11 +39,6 @@ func NewDiskStore() (*DiskStore, error) {
 }
 
 func (ds *DiskStore) Put(key string, value string) error {
-	// This check is to prevent writes occurring while memtable is locked and flushing to disk
-	if ds.memtable.locked {
-		return utils.ErrMemtableLocked
-	}
-
 	err := utils.ValidateKV(key, value)
 	if err != nil {
 		return err
@@ -76,6 +74,14 @@ func (ds *DiskStore) Put(key string, value string) error {
 	if logErr != nil {
 		fmt.Println(logErr)
 	}
+
+	// * Automatically flush when memtable reaches certain threshold
+	if ds.memtable.sizeInBytes >= FlushSizeThreshold {
+		ds.immutableMemtables = append(ds.immutableMemtables, deepCopyMemtable(*ds.memtable))
+		ds.memtable.clear()
+		ds.FlushMemtable()
+	}
+
 	return nil
 }
 
@@ -113,20 +119,36 @@ func (ds *DiskStore) ListOfAllKeys() {
 var counter int = 0
 
 func (ds *DiskStore) FlushMemtable() {
-	if ds.memtable.sizeInBytes >= 6500 {
+	for i := range ds.immutableMemtables {
 		counter++
-		utils.Logf("SIZE AT TIME OF FLUSHING (#%d): %d\n", counter, int(ds.memtable.sizeInBytes))
-		sstable := ds.memtable.Flush("storage")
-		// ! levels is empty. so we cant append to a nonexistent index
+		utils.Logf("SIZE AT TIME OF FLUSHING (#%d): %d\n", counter, int(ds.immutableMemtables[i].sizeInBytes))
+		sstable := ds.immutableMemtables[i].Flush("storage")
 		if len(ds.levels) == 0 {
+			// ! levels is empty. so we cant append to a nonexistent index
 			ds.levels = append(ds.levels, []SSTable{*sstable})
 		} else {
 			ds.levels[0] = append(ds.levels[0], *sstable)
 		}
+		ds.immutableMemtables = ds.immutableMemtables[:i]
 	}
 }
 
 func (ds *DiskStore) DebugMemtable() {
 	ds.memtable.PrintAllRecords()
 	utils.Logf("CURRENT SIZE IN BYTES: %d", ds.memtable.sizeInBytes)
+}
+
+func deepCopyMemtable(memtable Memtable) Memtable {
+	deepCopy := NewMemtable()
+	deepCopy.sizeInBytes = memtable.sizeInBytes
+
+	// copy the tree data
+	keys := memtable.data.Keys()
+	values := memtable.data.Values()
+
+	for i := range keys {
+		deepCopy.data.Put(keys[i], values[i])
+	}
+
+	return *deepCopy
 }
