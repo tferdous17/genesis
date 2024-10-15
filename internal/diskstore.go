@@ -24,7 +24,7 @@ const (
 	DELETE
 )
 
-const FlushSizeThreshold = 15000
+const FlushSizeThreshold = 100_000
 
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable()}
@@ -106,8 +106,40 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	return "<!not_found>", utils.ErrKeyNotFound
 }
 
-// TODO: This entire method will need to be reworked w/ RBTrees and SSTables
 func (ds *DiskStore) Delete(key string) error {
+	// * this is really just appending a new entry but with a tombstone value and empty key
+	value := ""
+	header := Header{
+		TimeStamp: uint32(time.Now().Unix()),
+		KeySize:   uint32(len(key)),
+		ValueSize: uint32(len(value)),
+	}
+	header.MarkTombstone()
+
+	deletionRecord := Record{
+		Header:     header,
+		Key:        key,
+		Value:      value,
+		RecordSize: headerSize + header.KeySize + header.ValueSize,
+	}
+	deletionRecord.CalculateChecksum()
+
+	ds.memtable.Put(key, deletionRecord)
+
+	// encode the entire key, value entry
+	buf := new(bytes.Buffer)
+	// Store operation as only 1 byte (only WAL entries will have this extra byte)
+	buf.WriteByte(byte(DELETE))
+	if encodeErr := deletionRecord.EncodeKV(buf); encodeErr != nil {
+		return utils.ErrEncodingKVFailed
+	}
+
+	// store in WAL
+	logErr := utils.WriteToFile(buf.Bytes(), ds.writeAheadLog)
+	if logErr != nil {
+		fmt.Println(logErr)
+	}
+
 	return nil
 }
 
