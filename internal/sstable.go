@@ -15,6 +15,7 @@ import (
 const (
 	DataFileExtension  string = ".data"
 	IndexFileExtension string = ".index"
+	BloomFileExtension string = ".index"
 
 	SparseIndexSampleSize int = 100
 )
@@ -22,12 +23,13 @@ const (
 var sstTableCounter uint32
 
 type SSTable struct {
-	dataFile   *os.File
-	indexFile  *os.File
-	sstCounter uint32
-	minKey     string
-	maxKey     string
-	sparseKeys []sparseIndex
+	dataFile    *os.File
+	indexFile   *os.File
+	bloomFilter *BloomFilter
+	sstCounter  uint32
+	minKey      string
+	maxKey      string
+	sparseKeys  []sparseIndex
 }
 
 // InitSSTableOnDisk directory to store sstable, (sorted) entries to store in said table
@@ -42,21 +44,25 @@ func InitSSTableOnDisk(directory string, entries []Record) *SSTable {
 	return table
 }
 
-func (sst *SSTable) InitTableFiles(directory string) {
+func (sst *SSTable) InitTableFiles(directory string) error {
 	// Create "storage" folder with read-write-execute for owner & group, read-only for others
 	if err := os.MkdirAll("../storage", 0755); err != nil {
-		fmt.Println("mkdir err", err)
+		return err
 	}
 
 	// create data and index files
 	dataFile, _ := os.Create(getNextSstFilename(directory, sst.sstCounter) + DataFileExtension)
 	indexFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + IndexFileExtension)
+	bloomFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + BloomFileExtension)
 
 	if err != nil {
-		fmt.Println("init file err", err)
+		return utils.ErrFileInit
 	}
 
 	sst.dataFile, sst.indexFile = dataFile, indexFile
+	sst.bloomFilter = NewBloomFilter(bloomFile)
+
+	return nil
 }
 
 func getNextSstFilename(directory string, sstCounter uint32) string {
@@ -94,8 +100,13 @@ func writeEntriesToSST(sortedEntries []Record, table *SSTable) {
 	if err := utils.WriteToFile(buf.Bytes(), table.dataFile); err != nil {
 		fmt.Println("write to sst err:", err)
 	}
+	// * Set up sparse index
 	utils.Logf("SPARSE KEYS: %v", table.sparseKeys)
 	populateSparseIndexFile(table.sparseKeys, table.indexFile)
+
+	// * Set up + populate bloom filter
+	table.bloomFilter.InitBloomFilterAttrs(uint32(len(sortedEntries)))
+	populateBloomFilter(sortedEntries, table.bloomFilter)
 }
 
 func populateSparseIndexFile(indices []sparseIndex, indexFile *os.File) {
@@ -112,10 +123,26 @@ func populateSparseIndexFile(indices []sparseIndex, indexFile *os.File) {
 	}
 }
 
+func populateBloomFilter(entries []Record, bloomFilter *BloomFilter) {
+	for i := range entries {
+		bloomFilter.Add(entries[i].Key)
+	}
+
+	if err := utils.WriteToFile(bloomFilter.bits, bloomFilter.file); err != nil {
+		fmt.Println("write to bloomfile err:", err)
+	}
+	bloomFilter.Debug()
+}
+
 func (sst *SSTable) Get(key string) (string, error) {
 	if key < sst.minKey || key > sst.maxKey {
 		return "<!>", utils.ErrKeyNotWithinTable
 	}
+
+	if !sst.bloomFilter.MightContain(key) {
+		return "", utils.ErrKeyNotWithinTable
+	}
+
 	// * Get sparse index and move to offset
 	currOffset := sst.sparseKeys[sst.getCandidateByteOffsetIndex(key)].byteOffset
 	if _, err := sst.dataFile.Seek(int64(currOffset), 0); err != nil {
