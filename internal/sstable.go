@@ -217,6 +217,6 @@ func (sst *SSTable) getCandidateByteOffsetIndex(targetKey string) int {
 			return mid
 		}
 	}
-	utils.Logf("CANDIDATE BYTE OFFSET: %d AT INDEX %d", sst.sparseKeys[low].byteOffset, uint32(low))
+	utils.LogCYAN("CANDIDATE BYTE OFFSET: %d AT INDEX %d", sst.sparseKeys[low-1].byteOffset, uint32(low-1))
 	return low - 1
 }
