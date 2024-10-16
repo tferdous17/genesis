@@ -15,7 +15,7 @@ import (
 const (
 	DataFileExtension  string = ".data"
 	IndexFileExtension string = ".index"
-	BloomFileExtension string = ".index"
+	BloomFileExtension string = ".bloom"
 
 	SparseIndexSampleSize int = 100
 )
@@ -128,7 +128,15 @@ func populateBloomFilter(entries []Record, bloomFilter *BloomFilter) {
 		bloomFilter.Add(entries[i].Key)
 	}
 
-	if err := utils.WriteToFile(bloomFilter.bits, bloomFilter.file); err != nil {
+	bfBytes := make([]byte, bloomFilter.bitSetSize)
+	for i, b := range bloomFilter.bitSet {
+		if b {
+			bfBytes[i] = 1
+		} else {
+			bfBytes[i] = 0
+		}
+	}
+	if err := utils.WriteToFile(bfBytes, bloomFilter.file); err != nil {
 		fmt.Println("write to bloomfile err:", err)
 	}
 	bloomFilter.Debug()
@@ -140,6 +148,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 	}
 
 	if !sst.bloomFilter.MightContain(key) {
+		utils.LogRED("BLOOM FILTER: %s is not a member of this table", key)
 		return "", utils.ErrKeyNotWithinTable
 	}
 
