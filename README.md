@@ -20,7 +20,7 @@ Features in the works:
     - [x] Flush memtable to data file in sorted order
       - [x] Conditional flushing (size threshold)
     - [x] Index file
-    - [ ] Bloom filter
+    - [x] Bloom filter
     - [ ] Multiple levels
     - [x] Get(key) operation on tables
     - [ ] Compaction
