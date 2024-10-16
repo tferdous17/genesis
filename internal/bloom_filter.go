@@ -2,68 +2,72 @@ package internal
 
 import (
 	"bitcask-go/utils"
-	"hash/fnv"
+	"github.com/spaolacci/murmur3"
+	"hash"
 	"math"
 	"os"
 )
 
 type BloomFilter struct {
-	file         *os.File
-	bitArraySize uint32
-	bits         []byte
+	file       *os.File
+	bitSetSize uint64
+	bitSet     []bool
+	hashes     []hash.Hash64
 }
 
-const FalsePositiveProbability = 0.01
-const NumHashes = 2
+const p = 0.01 // False positive probability
 
 func NewBloomFilter(bloomFile *os.File) *BloomFilter {
 	return &BloomFilter{file: bloomFile}
 }
 
 func (bf *BloomFilter) InitBloomFilterAttrs(numElements uint32) {
-	bf.calculateBitArraySize(numElements)
+	bf.calculatebitSetSize(numElements)
 	bf.initBitArray()
 }
 
-func (bf *BloomFilter) calculateBitArraySize(numElements uint32) {
-	numerator := float64(numElements) * math.Log(FalsePositiveProbability)
-	utils.LogCYAN("numerator %d", numerator)
-	denominator := math.Ln2 * math.Ln2
-	utils.LogCYAN("denominator %d", denominator)
-	res := -(numerator / denominator)
-	bf.bitArraySize = uint32(math.Ceil(res))
+func (bf *BloomFilter) calculatebitSetSize(numElements uint32) {
+	// proven math formulas to calculate optimal bloom filter params
+	bf.bitSetSize = uint64(math.Ceil(-1 * float64(numElements) * math.Log(p) / math.Pow(math.Log(2), 2)))
+	hashCount := uint64(math.Ceil((float64(bf.bitSetSize) / float64(numElements)) * math.Log(2)))
+	bf.hashes = getHashes(hashCount)
 }
 
 func (bf *BloomFilter) initBitArray() {
-	bf.bits = make([]byte, bf.bitArraySize)
+	bf.bitSet = make([]bool, bf.bitSetSize)
 }
 
 func (bf *BloomFilter) Add(key string) {
-	// hash the key n times, and store it into the bits array
-	for i := 0; i < NumHashes; i++ {
-		hash := fnv.New64()
+	for _, hash := range bf.hashes {
+		hash.Reset()
 		hash.Write([]byte(key))
-		index := hash.Sum64() % uint64(bf.bitArraySize)
-		bf.bits[index/64] |= 1 << (index % 64)
+		hashValue := hash.Sum64() % bf.bitSetSize
+		bf.bitSet[hashValue] = true
 	}
-	//fmt.Println(bf.bits)
 }
 
 func (bf *BloomFilter) MightContain(key string) bool {
 	// ! Bloom filter is probabilistic, so there's a chance to get false positives
-	for i := 0; i < NumHashes; i++ {
-		hash := fnv.New64()
-		hash.Write([]byte(key))
-		index := hash.Sum64() % uint64(bf.bitArraySize)
-		// If any of the bits are 0, it guarantees this key is NOT in our dataset
-		if (bf.bits[index/64] & 1 << (index % 64)) == 0 {
+	for _, hasher := range bf.hashes {
+		hasher.Reset()
+		hasher.Write([]byte(key))
+		hashValue := hasher.Sum64() % bf.bitSetSize
+		if !bf.bitSet[hashValue] {
 			return false
 		}
 	}
 	return true
 }
 
+func getHashes(k uint64) []hash.Hash64 {
+	hashers := make([]hash.Hash64, k)
+	for i := 0; uint64(i) < k; i++ {
+		hashers[i] = murmur3.New64WithSeed(uint32(i))
+	}
+	return hashers
+}
+
 func (bf *BloomFilter) Debug() {
-	utils.LogCYAN("Bit arr size: %d", bf.bitArraySize)
-	utils.LogCYAN("Bit arr: %v", bf.bits)
+	utils.LogCYAN("Bit Set: %v", bf.bitSet)
+	utils.LogCYAN("Bit Set Size: %d", bf.bitSetSize)
 }
