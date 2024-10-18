@@ -29,7 +29,7 @@ const FlushSizeThreshold = 100_000
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable()}
 
-	logFile, err := os.OpenFile("genesis_wal.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	logFile, err := os.OpenFile("../log/genesis_wal.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
