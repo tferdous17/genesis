@@ -12,7 +12,7 @@ import (
 type DiskStore struct {
 	memtable           *Memtable
 	writeAheadLog      *os.File
-	levels             [][]SSTable
+	buckets            []Bucket
 	immutableMemtables []Memtable
 }
 
@@ -24,7 +24,7 @@ const (
 	DELETE
 )
 
-const FlushSizeThreshold = 100_000
+const FlushSizeThreshold = 3_000
 
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable()}
@@ -96,12 +96,14 @@ func (ds *DiskStore) Get(key string) (string, error) {
 
 	// ! key not found in memtable, search SSTables on disk
 	// * search the most RECENT sstable first
-	for i := len(ds.levels[0]) - 1; i >= 0; i-- {
-		value, err := ds.levels[0][i].Get(key)
-		if errors.Is(err, utils.ErrKeyNotWithinTable) {
-			continue
+	for i := 0; i < len(ds.buckets); i++ {
+		for j := 0; j < len(ds.buckets[i].tables); j++ {
+			value, err := ds.buckets[i].tables[j].Get(key)
+			if errors.Is(err, utils.ErrKeyNotWithinTable) {
+				continue
+			}
+			return value, err
 		}
-		return value, err
 	}
 	return "<!not_found>", utils.ErrKeyNotFound
 }
@@ -147,7 +149,6 @@ func (ds *DiskStore) ListOfAllKeys() {
 	ds.memtable.PrintAllRecords()
 }
 
-// ? Flush in separate goroutine?
 var counter int = 0
 
 func (ds *DiskStore) FlushMemtable() {
@@ -155,13 +156,15 @@ func (ds *DiskStore) FlushMemtable() {
 		counter++
 		utils.Logf("SIZE AT TIME OF FLUSHING (#%d): %d\n", counter, int(ds.immutableMemtables[i].sizeInBytes))
 		sstable := ds.immutableMemtables[i].Flush("storage")
-		if len(ds.levels) == 0 {
-			// ! levels is empty. so we cant append to a nonexistent index
-			ds.levels = append(ds.levels, []SSTable{*sstable})
+		if len(ds.buckets) == 0 {
+			// ! buckets is empty. so we cant append to a nonexistent index
+			// * create new bucket and append table
+			ds.buckets = append(ds.buckets, *InitBucket(sstable))
 		} else {
-			ds.levels[0] = append(ds.levels[0], *sstable)
+			ds.buckets[0].AppendTableToBucket(sstable)
 		}
-		ds.immutableMemtables = ds.immutableMemtables[:i]
+		utils.LogRED("Len of bucket 0: %d", len(ds.buckets[0].tables))
+		ds.immutableMemtables = ds.immutableMemtables[:i] // basically removing a "queued" memtable since its flushed
 	}
 }
 
