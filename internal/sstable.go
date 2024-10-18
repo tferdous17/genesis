@@ -29,6 +29,7 @@ type SSTable struct {
 	sstCounter  uint32
 	minKey      string
 	maxKey      string
+	sizeInBytes uint32
 	sparseKeys  []sparseIndex
 }
 
@@ -85,6 +86,7 @@ func writeEntriesToSST(sortedEntries []Record, table *SSTable) {
 
 	// * every 100th key will be put into the sparse index
 	for i := range sortedEntries {
+		table.sizeInBytes += sortedEntries[i].RecordSize
 		if i%SparseIndexSampleSize == 0 {
 			table.sparseKeys = append(table.sparseKeys, sparseIndex{
 				keySize:    sortedEntries[i].Header.KeySize,
@@ -139,7 +141,6 @@ func populateBloomFilter(entries []Record, bloomFilter *BloomFilter) {
 	if err := utils.WriteToFile(bfBytes, bloomFilter.file); err != nil {
 		fmt.Println("write to bloomfile err:", err)
 	}
-	bloomFilter.Debug()
 }
 
 func (sst *SSTable) Get(key string) (string, error) {
