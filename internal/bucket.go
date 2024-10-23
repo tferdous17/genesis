@@ -2,10 +2,12 @@ package internal
 
 import (
 	"bitcask-go/utils"
+	"cmp"
 	"container/heap"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 )
 
 type Bucket struct {
@@ -128,4 +130,46 @@ func (b *Bucket) TriggerCompaction() {
 		fmt.Println(ele)
 	}
 
+}
+
+func filterAndDeleteTombstones(sortedRun []Record) {
+	var collectedTombstones []string
+
+	// collect all tombstones to delete
+	for i := range sortedRun {
+		if sortedRun[i].Header.Tombstone == 1 {
+			collectedTombstones = append(collectedTombstones, sortedRun[i].Key)
+		}
+	}
+
+	// now look at every key in collectedTombstones and delete it from the sorted run
+	for i := range sortedRun {
+		if slices.Contains(collectedTombstones, sortedRun[i].Key) {
+			sortedRun = slices.Delete(sortedRun, i, i)
+		}
+	}
+}
+
+func removeOutdatedEntires(sortedRun []Record) {
+	// * take every entry -> append to a map, if value for a given map key is > 1,
+	// * then sort the value (which will be a slice) & delete all values except the last 1 in the overall slice
+
+	var tempMap = make(map[string][]Record)
+
+	for i := range sortedRun {
+		tempMap[sortedRun[i].Key] = append(tempMap[sortedRun[i].Key], sortedRun[i])
+	}
+
+	for _, v := range tempMap {
+		if len(v) > 1 {
+			slices.SortFunc(v, func(a, b Record) int {
+				return cmp.Compare(a.Header.TimeStamp, b.Header.TimeStamp)
+			})
+
+			for i := 0; i < len(v)-1; i++ {
+				idx := slices.Index(sortedRun, v[i])
+				slices.Delete(sortedRun, idx, idx)
+			}
+		}
+	}
 }
