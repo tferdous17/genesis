@@ -110,10 +110,10 @@ func (b *Bucket) TriggerCompaction() {
 
 	// * now we have all our sorted runs
 	h := MinRecordHeap{}
-	for i := range allSortedRuns {
-		filterAndDeleteTombstones(allSortedRuns[i])
-		removeOutdatedEntires(allSortedRuns[i])
-	}
+	//for i := range allSortedRuns {
+	//	filterAndDeleteTombstones(allSortedRuns[i])
+	//	removeOutdatedEntires(allSortedRuns[i])
+	//}
 
 	for i := range allSortedRuns {
 		for j := range allSortedRuns[i] {
@@ -121,43 +121,45 @@ func (b *Bucket) TriggerCompaction() {
 		}
 	}
 
-	// * got all of them into 1 table basically
-	// * now we need to handle tombstone values
-	// * also need to handle duplicates -> take only most recent timestamp
+	// * now that they're all in a heap, we need to throw it into 1 big sstable
 	utils.LogGREEN("Heap len = %d", h.Len())
+	finalSortedRun := make([]Record, 0)
 	for h.Len() > 0 {
 		ele := heap.Pop(&h)
-		fmt.Println(ele)
+		finalSortedRun = append(finalSortedRun, ele.(Record))
 	}
+
+	filterAndDeleteTombstones(&finalSortedRun)
+	removeOutdatedEntires(&finalSortedRun)
 
 }
 
-func filterAndDeleteTombstones(sortedRun []Record) {
+func filterAndDeleteTombstones(sortedRun *[]Record) {
 	var collectedTombstones []string
 
 	// collect all tombstones to delete
-	for i := range sortedRun {
-		if sortedRun[i].Header.Tombstone == 1 {
-			collectedTombstones = append(collectedTombstones, sortedRun[i].Key)
+	for i := range *sortedRun {
+		if (*sortedRun)[i].Header.Tombstone == 1 {
+			collectedTombstones = append(collectedTombstones, (*sortedRun)[i].Key)
 		}
 	}
 
 	// now look at every key in collectedTombstones and delete it from the sorted run
-	for i := range sortedRun {
-		if slices.Contains(collectedTombstones, sortedRun[i].Key) {
-			sortedRun = slices.Delete(sortedRun, i, i)
+	for i := range *sortedRun {
+		if slices.Contains(collectedTombstones, (*sortedRun)[i].Key) {
+			*sortedRun = slices.Delete(*sortedRun, i, i)
 		}
 	}
 }
 
-func removeOutdatedEntires(sortedRun []Record) {
+func removeOutdatedEntires(sortedRun *[]Record) {
 	// * take every entry -> append to a map, if value for a given map key is > 1,
 	// * then sort the value (which will be a slice) & delete all values except the last 1 in the overall slice
 
 	var tempMap = make(map[string][]Record)
 
-	for i := range sortedRun {
-		tempMap[sortedRun[i].Key] = append(tempMap[sortedRun[i].Key], sortedRun[i])
+	for i := range *sortedRun {
+		tempMap[(*sortedRun)[i].Key] = append(tempMap[(*sortedRun)[i].Key], (*sortedRun)[i])
 	}
 
 	for _, v := range tempMap {
@@ -167,8 +169,8 @@ func removeOutdatedEntires(sortedRun []Record) {
 			})
 
 			for i := 0; i < len(v)-1; i++ {
-				idx := slices.Index(sortedRun, v[i])
-				slices.Delete(sortedRun, idx, idx)
+				idx := slices.Index(*sortedRun, v[i])
+				*sortedRun = slices.Delete(*sortedRun, idx, idx)
 			}
 		}
 	}
