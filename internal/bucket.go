@@ -126,9 +126,9 @@ func (b *Bucket) TriggerCompaction() {
 	}
 
 	filterAndDeleteTombstones(&finalSortedRun)
-	//removeOutdatedEntires(&finalSortedRun)
+	removeOutdatedEntires(&finalSortedRun)
 
-	//utils.LogCYAN("MERGED SSTABLE ENTRIES: %v", finalSortedRun)
+	utils.LogCYAN("MERGED SSTABLE ENTRIES: %v", finalSortedRun)
 
 	//mergedSSTable := InitSSTableOnDisk("storage", finalSortedRun)
 	//utils.LogCYAN("Size in bytes of merged table: %d", mergedSSTable.sizeInBytes)
@@ -176,7 +176,7 @@ func removeOutdatedEntires(sortedRun *[]Record) {
 
 			for i := 0; i < len(v)-1; i++ {
 				idx := slices.Index(*sortedRun, v[i])
-				*sortedRun = slices.Delete(*sortedRun, idx, idx)
+				*sortedRun = slices.Delete(*sortedRun, idx, idx+1)
 			}
 		}
 	}
