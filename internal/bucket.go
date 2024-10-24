@@ -19,7 +19,7 @@ type Bucket struct {
 }
 
 const DefaultTableSizeInBytes uint32 = 3_000
-const MinThreshold = 4
+const MinThreshold = 5
 const MaxThreshold = 12
 
 func InitBucket(table *SSTable) *Bucket {
@@ -110,11 +110,6 @@ func (b *Bucket) TriggerCompaction() {
 
 	// * now we have all our sorted runs
 	h := MinRecordHeap{}
-	//for i := range allSortedRuns {
-	//	filterAndDeleteTombstones(allSortedRuns[i])
-	//	removeOutdatedEntires(allSortedRuns[i])
-	//}
-
 	for i := range allSortedRuns {
 		for j := range allSortedRuns[i] {
 			heap.Push(&h, allSortedRuns[i][j])
@@ -126,12 +121,17 @@ func (b *Bucket) TriggerCompaction() {
 	finalSortedRun := make([]Record, 0)
 	for h.Len() > 0 {
 		ele := heap.Pop(&h)
+		fmt.Println(ele)
 		finalSortedRun = append(finalSortedRun, ele.(Record))
 	}
 
 	filterAndDeleteTombstones(&finalSortedRun)
-	removeOutdatedEntires(&finalSortedRun)
+	//removeOutdatedEntires(&finalSortedRun)
 
+	//utils.LogCYAN("MERGED SSTABLE ENTRIES: %v", finalSortedRun)
+
+	//mergedSSTable := InitSSTableOnDisk("storage", finalSortedRun)
+	//utils.LogCYAN("Size in bytes of merged table: %d", mergedSSTable.sizeInBytes)
 }
 
 func filterAndDeleteTombstones(sortedRun *[]Record) {
@@ -145,9 +145,15 @@ func filterAndDeleteTombstones(sortedRun *[]Record) {
 	}
 
 	// now look at every key in collectedTombstones and delete it from the sorted run
-	for i := range *sortedRun {
+	for i := 0; i < len(*sortedRun); {
 		if slices.Contains(collectedTombstones, (*sortedRun)[i].Key) {
-			*sortedRun = slices.Delete(*sortedRun, i, i)
+			if i < len(*sortedRun)-1 {
+				*sortedRun = slices.Delete(*sortedRun, i, i+1)
+			} else {
+				*sortedRun = (*sortedRun)[:len(*sortedRun)-1]
+			}
+		} else {
+			i++
 		}
 	}
 }
