@@ -33,6 +33,17 @@ func InitBucket(table *SSTable) *Bucket {
 	return bucket
 }
 
+func InitEmptyBucket() *Bucket {
+	bucket := &Bucket{
+		minTableSize: DefaultTableSizeInBytes,
+		bucketLow:    0.5,
+		bucketHigh:   1.5,
+		tables:       []SSTable{},
+	}
+	bucket.calculateAvgBucketSize()
+	return bucket
+}
+
 func (b *Bucket) AppendTableToBucket(table *SSTable) {
 	if table.sizeInBytes < b.minTableSize {
 		return
@@ -59,11 +70,7 @@ func (b *Bucket) calculateAvgBucketSize() {
 	b.avgBucketSize = sum / uint32(len(b.tables))
 }
 
-func (b *Bucket) TriggerCompaction() {
-	if len(b.tables) < MinThreshold {
-		return
-	}
-
+func (b *Bucket) TriggerCompaction() *SSTable {
 	utils.LogRED("STARTING COMPACTION WITH LENGTH %d", len(b.tables))
 
 	var allSortedRuns [][]Record
@@ -128,10 +135,9 @@ func (b *Bucket) TriggerCompaction() {
 	filterAndDeleteTombstones(&finalSortedRun)
 	removeOutdatedEntires(&finalSortedRun)
 
-	utils.LogCYAN("MERGED SSTABLE ENTRIES: %v", finalSortedRun)
-
-	//mergedSSTable := InitSSTableOnDisk("storage", finalSortedRun)
-	//utils.LogCYAN("Size in bytes of merged table: %d", mergedSSTable.sizeInBytes)
+	// once the new merged table gets created, we add it to a new bucket
+	mergedSSTable := InitSSTableOnDisk("storage", finalSortedRun)
+	return mergedSSTable
 }
 
 func filterAndDeleteTombstones(sortedRun *[]Record) {
