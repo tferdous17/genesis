@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 )
 
@@ -73,11 +74,14 @@ func (b *Bucket) calculateAvgBucketSize() {
 	b.avgBucketSize = sum / uint32(len(b.tables))
 }
 
-func (b *Bucket) TriggerCompaction(minNumTables, maxNumTables int) *SSTable {
-	if len(b.tables) < minNumTables || len(b.tables) > maxNumTables {
-		return nil
+func (b *Bucket) NeedsCompaction(minNumTables, maxNumTables int) bool {
+	if len(b.tables) >= minNumTables && len(b.tables) <= maxNumTables {
+		return true
 	}
+	return false
+}
 
+func (b *Bucket) TriggerCompaction() *SSTable {
 	utils.LogRED("STARTING COMPACTION WITH LENGTH %d", len(b.tables))
 
 	var allSortedRuns [][]Record
@@ -93,7 +97,7 @@ func (b *Bucket) TriggerCompaction(minNumTables, maxNumTables int) *SSTable {
 			currEntry := make([]byte, headerSize)
 			_, err := io.ReadFull(b.tables[i].dataFile, currEntry)
 			if errors.Is(err, io.EOF) {
-				utils.Log("END OF FILE")
+				//utils.Log("END OF FILE")
 				break
 			}
 
@@ -135,7 +139,6 @@ func (b *Bucket) TriggerCompaction(minNumTables, maxNumTables int) *SSTable {
 	finalSortedRun := make([]Record, 0)
 	for h.Len() > 0 {
 		ele := heap.Pop(&h)
-		fmt.Println(ele)
 		finalSortedRun = append(finalSortedRun, ele.(Record))
 	}
 
@@ -144,6 +147,10 @@ func (b *Bucket) TriggerCompaction(minNumTables, maxNumTables int) *SSTable {
 
 	// once the new merged table gets created, we add it to a new bucket
 	mergedSSTable := InitSSTableOnDisk("storage", finalSortedRun)
+
+	// ! now we need to delete the old sstables from disk to free up space
+	deleteOldSSTables(b.tables)
+
 	return mergedSSTable
 }
 
@@ -193,4 +200,19 @@ func removeOutdatedEntires(sortedRun *[]Record) {
 			}
 		}
 	}
+}
+
+func deleteOldSSTables(tables []SSTable) error {
+	for i := range tables {
+		files := []string{tables[i].dataFile.Name(), tables[i].indexFile.Name(), tables[i].bloomFilter.file.Name()}
+
+		for _, file := range files {
+			if err := os.Remove(file); err != nil {
+				utils.Log("DELETION ERROR")
+				return err
+			}
+		}
+	}
+	tables = []SSTable{} // empty the slice
+	return nil
 }
