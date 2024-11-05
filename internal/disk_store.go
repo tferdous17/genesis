@@ -4,7 +4,6 @@ import (
 	"bitcask-go/utils"
 	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"time"
 )
@@ -61,19 +60,7 @@ func (ds *DiskStore) Put(key string, value string) error {
 	record.Header.CheckSum = record.CalculateChecksum()
 
 	ds.memtable.Put(key, record)
-
-	// encode the entire key, value entry
-	buf := new(bytes.Buffer)
-	// Store operation as only 1 byte (only WAL entries will have this extra byte)
-	buf.WriteByte(byte(PUT))
-	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
-		return utils.ErrEncodingKVFailed
-	}
-	// store in WAL
-	logErr := utils.WriteToFile(buf.Bytes(), ds.writeAheadLog)
-	if logErr != nil {
-		fmt.Println(logErr)
-	}
+	ds.appendOperationToWAL(PUT, record)
 
 	// * Automatically flush when memtable reaches certain threshold
 	if ds.memtable.sizeInBytes >= FlushSizeThreshold {
@@ -87,11 +74,7 @@ func (ds *DiskStore) Put(key string, value string) error {
 
 func (ds *DiskStore) Get(key string) (string, error) {
 	// log the get operation first
-	buf := new(bytes.Buffer)
-	buf.WriteByte(byte(GET))
-	buf.WriteString(key)
-
-	utils.WriteToFile(buf.Bytes(), ds.writeAheadLog)
+	ds.appendOperationToWAL(GET, Record{Key: key})
 
 	// * Search memtable first, if not there -> search SSTables on disk
 	record, err := ds.memtable.Get(key)
@@ -124,20 +107,7 @@ func (ds *DiskStore) Delete(key string) error {
 	deletionRecord.CalculateChecksum()
 
 	ds.memtable.Put(key, deletionRecord)
-
-	// encode the entire key, value entry
-	buf := new(bytes.Buffer)
-	// Store operation as only 1 byte (only WAL entries will have this extra byte)
-	buf.WriteByte(byte(DELETE))
-	if encodeErr := deletionRecord.EncodeKV(buf); encodeErr != nil {
-		return utils.ErrEncodingKVFailed
-	}
-
-	// store in WAL
-	logErr := utils.WriteToFile(buf.Bytes(), ds.writeAheadLog)
-	if logErr != nil {
-		fmt.Println(logErr)
-	}
+	ds.appendOperationToWAL(DELETE, deletionRecord)
 
 	return nil
 }
@@ -172,4 +142,22 @@ func deepCopyMemtable(memtable Memtable) Memtable {
 	}
 
 	return *deepCopy
+}
+
+func (ds *DiskStore) appendOperationToWAL(op Operation, record Record) error {
+	buf := new(bytes.Buffer)
+	// Store operation as only 1 byte (only WAL entries will have this extra byte)
+	buf.WriteByte(byte(op))
+
+	// encode the entire key, value entry
+	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
+		return utils.ErrEncodingKVFailed
+	}
+
+	// store in WAL
+	if logErr := utils.WriteToFile(buf.Bytes(), ds.writeAheadLog); logErr != nil {
+		return logErr
+	}
+
+	return nil
 }
