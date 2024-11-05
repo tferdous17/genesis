@@ -15,36 +15,43 @@ type BucketManager struct {
 func InitBucketManager() *BucketManager {
 	manager := &BucketManager{
 		buckets:           make(map[int]*Bucket),
-		highestLvl:        0,
+		highestLvl:        1,
 		minTableThreshold: 4,
 		maxTableThreshold: 12,
 	}
-	manager.buckets[0] = InitEmptyBucket()
+	manager.buckets[1] = InitEmptyBucket()
 
 	return manager
 }
 
 func (bm *BucketManager) InsertTable(table *SSTable) {
-	var lvlToAppend int
-	for currLvl, bucket := range bm.buckets {
-		lvlToAppend = currLvl + calculateLevel(*bucket, table)
-		utils.LogCYAN("lvl=%d", lvlToAppend)
-		utils.LogGREEN("k+lvl = %d", lvlToAppend)
-		_, ok := bm.buckets[lvlToAppend]
-		if !ok {
-			utils.Log("CREATING NEW LEVEL")
-			bm.buckets[lvlToAppend] = InitEmptyBucket()
+	var levelToAppend = 1
+
+	for currLvl := bm.highestLvl; currLvl > 0; currLvl-- {
+		bkt := bm.buckets[currLvl]
+
+		calculatedLevelReturn := calculateLevel(*bkt, table)
+		levelToAppend = currLvl + calculatedLevelReturn
+
+		if calculatedLevelReturn == -1 {
+			continue
+		}
+
+		if calculatedLevelReturn == 0 {
+			bm.buckets[currLvl].AppendTableToBucket(table)
+		} else { // calculatedLevelReturn == 1
+			bm.buckets[levelToAppend] = InitEmptyBucket()
+			bm.buckets[levelToAppend].AppendTableToBucket(table)
 			bm.highestLvl++
 		}
-		bm.buckets[lvlToAppend].AppendTableToBucket(table)
 		break
 	}
 
-	utils.LogGREEN("lvl to append = %d", lvlToAppend)
-	if bm.shouldCompact(lvlToAppend) {
-		// trigger compact
-		bm.compact(lvlToAppend)
+	if bm.shouldCompact(levelToAppend) {
+		bm.compact(levelToAppend)
 	}
+
+	bm.DebugBM()
 }
 
 func (bm *BucketManager) DebugBM() {
@@ -56,11 +63,9 @@ func (bm *BucketManager) DebugBM() {
 
 func (bm *BucketManager) compact(level int) {
 	bkt := bm.buckets[level]
-	//ONLY triggers if threshold is reached in the bucket
-	mergedTable := bkt.TriggerCompaction()
+	mergedTable := bkt.TriggerCompaction() // ONLY triggers if threshold is reached in the bucket
 
 	if mergedTable != nil {
-		// Take this table and throw it into a new level
 		bm.InsertTable(mergedTable)
 	}
 }
@@ -70,10 +75,6 @@ func (bm *BucketManager) shouldCompact(level int) bool {
 }
 
 func calculateLevel(bucket Bucket, table *SSTable) int {
-	if table.sizeInBytes < bucket.minTableSize {
-		return -1
-	}
-
 	lowerSizeThreshold := uint32(bucket.bucketLow * float32(bucket.avgBucketSize))   // 50% lower than avg size
 	higherSizeThreshold := uint32(bucket.bucketHigh * float32(bucket.avgBucketSize)) // 50% higher than avg size
 
