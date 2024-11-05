@@ -94,18 +94,8 @@ func (ds *DiskStore) Get(key string) (string, error) {
 		return "<!>", err
 	} // else err is KeyNotFound
 
-	// ! key not found in memtable, search SSTables on disk
-	// * search the most RECENT sstable first
-	//for i := 0; i < len(ds.buckets); i++ {
-	//	for j := 0; j < len(ds.buckets[i].tables); j++ {
-	//		value, err := ds.buckets[i].tables[j].Get(key)
-	//		if errors.Is(err, utils.ErrKeyNotWithinTable) {
-	//			continue
-	//		}
-	//		return value, err
-	//	}
-	//}
-	return "<!not_found>", utils.ErrKeyNotFound
+	// * key not found in memtable, thus search SSTables on disk
+	return ds.bucketManager.RetrieveKey(key)
 }
 
 func (ds *DiskStore) Delete(key string) error {

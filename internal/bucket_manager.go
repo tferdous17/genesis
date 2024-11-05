@@ -54,6 +54,16 @@ func (bm *BucketManager) InsertTable(table *SSTable) {
 	bm.DebugBM()
 }
 
+func (bm *BucketManager) RetrieveKey(key string) (string, error) {
+	// start at highest level first
+	for lvl := bm.highestLvl; lvl > 0; lvl-- {
+		for _, table := range bm.buckets[lvl].tables {
+			return table.Get(key)
+		}
+	}
+	return "<!not_found>", utils.ErrKeyNotFound
+}
+
 func (bm *BucketManager) DebugBM() {
 	utils.Log("Length of each bucket:")
 	for k, v := range bm.buckets {
