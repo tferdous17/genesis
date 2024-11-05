@@ -86,6 +86,13 @@ func (ds *DiskStore) Put(key string, value string) error {
 }
 
 func (ds *DiskStore) Get(key string) (string, error) {
+	// log the get operation first
+	buf := new(bytes.Buffer)
+	buf.WriteByte(byte(GET))
+	buf.WriteString(key)
+
+	utils.WriteToFile(buf.Bytes(), ds.writeAheadLog)
+
 	// * Search memtable first, if not there -> search SSTables on disk
 	record, err := ds.memtable.Get(key)
 	if err == nil {
