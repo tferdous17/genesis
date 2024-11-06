@@ -144,6 +144,11 @@ func deepCopyMemtable(memtable Memtable) Memtable {
 	return *deepCopy
 }
 
+func (ds *DiskStore) Close() bool {
+	//TODO implement me
+	return true
+}
+
 func (ds *DiskStore) appendOperationToWAL(op Operation, record Record) error {
 	buf := new(bytes.Buffer)
 	// Store operation as only 1 byte (only WAL entries will have this extra byte)
