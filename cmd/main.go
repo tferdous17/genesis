@@ -2,30 +2,92 @@ package main
 
 import (
 	"bitcask-go/internal"
-	"bytes"
+	"bufio"
 	"fmt"
+	"log"
+	"math/rand"
+	"os"
+	"strings"
+	"time"
 )
 
 func main() {
-	buf := bytes.Buffer{}
-	fmt.Println(buf)
+	intro := "\n ▗▄▄▖▗▄▄▄▖▗▖  ▗▖▗▄▄▄▖ ▗▄▄▖▗▄▄▄▖ ▗▄▄▖\n▐▌   ▐▌   ▐▛▚▖▐▌▐▌   ▐▌     █  ▐▌   \n▐▌▝▜▌▐▛▀▀▘▐▌ ▝▜▌▐▛▀▀▘ ▝▀▚▖  █   ▝▀▚▖\n▝▚▄▞▘▐▙▄▄▖▐▌  ▐▌▐▙▄▄▖▗▄▄▞▘▗▄█▄▖▗▄▄▞▘\n                                    \n                                    \n                                    "
 
-	header := internal.Header{TimeStamp: 123, KeySize: 150, ValueSize: 240}
-	err := header.EncodeHeader(&buf)
-	fmt.Println(err)
+	commands := "Commands:\n" +
+		"\t- set     <key> <value>   : insert a key-value pair\n" +
+		"\t- get     <key>           : get a key value\n" +
+		"\t- del     <key>           : delete a key\n" +
+		"\t- ctrl+c                  : exit\n" +
+		"\t- help                    : show this message"
 
-	fmt.Println("buf is now", buf)
+	store, _ := internal.NewDiskStore()
 
-	buf2 := make([]byte, 12)
-	_, err2 := buf.Read(buf2) // it reads the first len(buf2) bytes from buf into buf2
-	fmt.Println(err2)
+	fmt.Println(intro)
+	fmt.Println(commands)
 
-	err3 := header.DecodeHeader(buf2)
-	fmt.Println(err3)
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Println("\nEnter command: ")
+		scanner.Scan()
+		args := strings.Split(scanner.Text(), " ")
 
-	fmt.Println("-----printing header info below-----")
-	fmt.Println(header.TimeStamp)
-	fmt.Println(header.KeySize)
-	fmt.Println(header.ValueSize)
+		switch args[0] {
+		case "set":
+			if len(args) != 3 {
+				log.Fatal("Insufficient num of args")
+			} else {
+				key := args[1]
+				val := args[2]
+				store.Put(key, val)
+			}
+		case "get":
+			if len(args) != 2 {
+				log.Fatal("Insufficient num of args")
+			} else {
+				key := args[1]
+				res, _ := store.Get(key)
+				fmt.Println(res)
+			}
+		case "del":
+			if len(args) != 2 {
+				log.Fatal("Insufficient num of args")
+			} else {
+				key := args[1]
+				err := store.Delete(key)
+				if err != nil {
+					fmt.Println("err: could not del key")
+				} else {
+					fmt.Println("deletion: success")
+				}
+			}
+		case "help":
+			fmt.Println("\n" + commands)
+		}
 
+	}
+}
+
+func generateRandomEntry(store map[string]string) {
+	// Generate a random string for the key
+	key := generateRandomString(10)
+
+	// Generate a random color from a predefined list
+	colors := []string{"red", "green", "blue", "yellow", "orange", "purple", "pink", "brown", "black", "white"}
+	color := colors[rand.Intn(len(colors))]
+
+	// Store the key-value pair in the map
+	store[key] = color
+}
+
+func generateRandomString(length int) string {
+	rand.Seed(time.Now().UnixNano())
+	chars := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+	b := make([]rune, length)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+
+	}
+	return string(b)
 }
