@@ -23,7 +23,7 @@ const (
 	DELETE
 )
 
-const FlushSizeThreshold = 3_000
+const FlushSizeThreshold = 1024 * 1024 * 256
 
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable(), bucketManager: InitBucketManager()}
@@ -47,11 +47,12 @@ func (ds *DiskStore) Put(key string, value string) error {
 	header := Header{
 		CheckSum:  0,
 		Tombstone: 0,
-		TimeStamp: uint32(time.Now().Unix()),
+		TimeStamp: 123,
+		//TimeStamp: uint32(time.Now().Unix()),
 		KeySize:   uint32(len(key)),
 		ValueSize: uint32(len(value)),
 	}
-	record := Record{
+	record := &Record{
 		Header:     header,
 		Key:        key,
 		Value:      value,
@@ -59,8 +60,8 @@ func (ds *DiskStore) Put(key string, value string) error {
 	}
 	record.Header.CheckSum = record.CalculateChecksum()
 
-	ds.memtable.Put(key, record)
-	ds.appendOperationToWAL(PUT, record)
+	ds.memtable.Put(&key, record)
+	ds.appendOperationToWAL(PUT, *record)
 
 	// * Automatically flush when memtable reaches certain threshold
 	if ds.memtable.sizeInBytes >= FlushSizeThreshold {
@@ -106,7 +107,7 @@ func (ds *DiskStore) Delete(key string) error {
 	}
 	deletionRecord.CalculateChecksum()
 
-	ds.memtable.Put(key, deletionRecord)
+	ds.memtable.Put(&key, &deletionRecord)
 	ds.appendOperationToWAL(DELETE, deletionRecord)
 
 	return nil

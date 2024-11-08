@@ -20,8 +20,8 @@ func NewMemtable() *Memtable {
 
 var recCounter int = 0
 
-func (m *Memtable) Put(key string, value Record) {
-	m.data.Put(key, value)
+func (m *Memtable) Put(key *string, value *Record) {
+	m.data.Put(*key, *value)
 	recCounter++
 	m.sizeInBytes += value.RecordSize
 }
