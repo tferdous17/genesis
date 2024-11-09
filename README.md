@@ -69,21 +69,34 @@ genesis supports the following operations:
 Important to note is that genesis utilizes **tombstone-based garbage collection**. When deleting an existing key, it will simply append a tombstone value in the header and re-add it to the memtable (which will eventually get flushed to disk). The _actual_ deletion process occurs in the SSTable compaction algorithm.
 
 
-# Benchmarks (11/8/24)
+# Benchmarks
+
+**Each benchmark is ran 3 times and the average is shown below**
+<br>Operation count is dynamically allocated for some of the benchmarks
 ### Full Tree
 - Put: insert 1,000,000 distinct kv pairs to the tree
+- Get: get 1 key in an SSTable w/ 1,000,000 kv pairs
 ```go
 goos: darwin
 goarch: arm64
 cpu: Apple M3 Pro
-                                 Ops                Time per op         Ops per sec
-BenchmarkDiskStore_Put-12    	 1000000	     9745 ns/op	         104326 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     9743 ns/op	         104354 ops/s
+
 BenchmarkDiskStore_Put-12    	 1000000	     9740 ns/op	         104464 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     9745 ns/op	         104327 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     9752 ns/op	         104146 ops/s
+BenchmarkDiskStore_Get-12    	13266362	    77.84 ns/op        12846082 ops/s
 ```
 
+### Memtable
+- Put: insert 1,000,000 distinct kv pairs to the memtable
+- Get: get 1 key in a memtable w/ 1,000,000 kv pairs
+
+```go
+goos: darwin
+goarch: arm64
+cpu: Apple M3 Pro
+
+BenchmarkMemtable_Put-12    	  1000000	      9608 ns/op	    104081 ops/s
+BenchmarkMemtable_Get-12    	 11267596	     105.7 ns/op	   9464848 ops/s
+```
 
 # Feature Checklist
 Features in the works:
