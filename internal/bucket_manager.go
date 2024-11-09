@@ -30,7 +30,7 @@ func (bm *BucketManager) InsertTable(table *SSTable) {
 	for currLvl := bm.highestLvl; currLvl > 0; currLvl-- {
 		bkt := bm.buckets[currLvl]
 
-		calculatedLevelReturn := calculateLevel(*bkt, table)
+		calculatedLevelReturn := calculateLevel(bkt, table)
 		levelToAppend = currLvl + calculatedLevelReturn
 
 		if calculatedLevelReturn == -1 {
@@ -54,11 +54,11 @@ func (bm *BucketManager) InsertTable(table *SSTable) {
 	bm.DebugBM()
 }
 
-func (bm *BucketManager) RetrieveKey(key string) (string, error) {
+func (bm *BucketManager) RetrieveKey(key *string) (string, error) {
 	// start at highest level first
 	for lvl := bm.highestLvl; lvl > 0; lvl-- {
 		for _, table := range bm.buckets[lvl].tables {
-			return table.Get(key)
+			return table.Get(*key)
 		}
 	}
 	return "<!not_found>", utils.ErrKeyNotFound
@@ -84,7 +84,7 @@ func (bm *BucketManager) shouldCompact(level int) bool {
 	return bm.buckets[level].NeedsCompaction(bm.minTableThreshold, bm.maxTableThreshold)
 }
 
-func calculateLevel(bucket Bucket, table *SSTable) int {
+func calculateLevel(bucket *Bucket, table *SSTable) int {
 	lowerSizeThreshold := uint32(bucket.bucketLow * float32(bucket.avgBucketSize))   // 50% lower than avg size
 	higherSizeThreshold := uint32(bucket.bucketHigh * float32(bucket.avgBucketSize)) // 50% higher than avg size
 

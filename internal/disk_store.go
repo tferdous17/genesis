@@ -37,7 +37,7 @@ func NewDiskStore() (*DiskStore, error) {
 	return ds, err
 }
 
-func (ds *DiskStore) Put(key string, value string) error {
+func (ds *DiskStore) Put(key *string, value *string) error {
 	err := utils.ValidateKV(key, value)
 	if err != nil {
 		return err
@@ -47,25 +47,25 @@ func (ds *DiskStore) Put(key string, value string) error {
 	header := Header{
 		CheckSum:  0,
 		Tombstone: 0,
-		TimeStamp: 123,
-		//TimeStamp: uint32(time.Now().Unix()),
-		KeySize:   uint32(len(key)),
-		ValueSize: uint32(len(value)),
+		TimeStamp: uint32(time.Now().Unix()),
+		KeySize:   uint32(len(*key)),
+		ValueSize: uint32(len(*value)),
 	}
 	record := &Record{
 		Header:     header,
-		Key:        key,
-		Value:      value,
+		Key:        *key,
+		Value:      *value,
 		RecordSize: headerSize + header.KeySize + header.ValueSize,
 	}
 	record.Header.CheckSum = record.CalculateChecksum()
 
-	ds.memtable.Put(&key, record)
-	ds.appendOperationToWAL(PUT, *record)
+	ds.memtable.Put(key, record)
+	// TODO: Batch WAL appends to improve performance, constant disk writes are too expensive
+	//ds.appendOperationToWAL(PUT, record)
 
 	// * Automatically flush when memtable reaches certain threshold
 	if ds.memtable.sizeInBytes >= FlushSizeThreshold {
-		ds.immutableMemtables = append(ds.immutableMemtables, deepCopyMemtable(*ds.memtable))
+		ds.immutableMemtables = append(ds.immutableMemtables, *deepCopyMemtable(ds.memtable))
 		ds.memtable.clear()
 		ds.FlushMemtable()
 	}
@@ -75,10 +75,10 @@ func (ds *DiskStore) Put(key string, value string) error {
 
 func (ds *DiskStore) Get(key string) (string, error) {
 	// log the get operation first
-	ds.appendOperationToWAL(GET, Record{Key: key})
+	//ds.appendOperationToWAL(GET, &Record{Key: key})
 
 	// * Search memtable first, if not there -> search SSTables on disk
-	record, err := ds.memtable.Get(key)
+	record, err := ds.memtable.Get(&key)
 	if err == nil {
 		return record.Value, nil
 	} else if !errors.Is(err, utils.ErrKeyNotFound) {
@@ -86,7 +86,7 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	} // else err is KeyNotFound
 
 	// * key not found in memtable, thus search SSTables on disk
-	return ds.bucketManager.RetrieveKey(key)
+	return ds.bucketManager.RetrieveKey(&key)
 }
 
 func (ds *DiskStore) Delete(key string) error {
@@ -108,7 +108,7 @@ func (ds *DiskStore) Delete(key string) error {
 	deletionRecord.CalculateChecksum()
 
 	ds.memtable.Put(&key, &deletionRecord)
-	ds.appendOperationToWAL(DELETE, deletionRecord)
+	ds.appendOperationToWAL(DELETE, &deletionRecord)
 
 	return nil
 }
@@ -130,7 +130,7 @@ func (ds *DiskStore) DebugMemtable() {
 	utils.Logf("CURRENT SIZE IN BYTES: %d", ds.memtable.sizeInBytes)
 }
 
-func deepCopyMemtable(memtable Memtable) Memtable {
+func deepCopyMemtable(memtable *Memtable) *Memtable {
 	deepCopy := NewMemtable()
 	deepCopy.sizeInBytes = memtable.sizeInBytes
 
@@ -142,7 +142,7 @@ func deepCopyMemtable(memtable Memtable) Memtable {
 		deepCopy.data.Put(keys[i], values[i])
 	}
 
-	return *deepCopy
+	return deepCopy
 }
 
 func (ds *DiskStore) Close() bool {
@@ -150,7 +150,7 @@ func (ds *DiskStore) Close() bool {
 	return true
 }
 
-func (ds *DiskStore) appendOperationToWAL(op Operation, record Record) error {
+func (ds *DiskStore) appendOperationToWAL(op Operation, record *Record) error {
 	buf := new(bytes.Buffer)
 	// Store operation as only 1 byte (only WAL entries will have this extra byte)
 	buf.WriteByte(byte(op))

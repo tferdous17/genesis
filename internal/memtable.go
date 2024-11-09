@@ -26,8 +26,8 @@ func (m *Memtable) Put(key *string, value *Record) {
 	m.sizeInBytes += value.RecordSize
 }
 
-func (m *Memtable) Get(key string) (Record, error) {
-	val, found := m.data.Get(key)
+func (m *Memtable) Get(key *string) (Record, error) {
+	val, found := m.data.Get(*key)
 	if !found {
 		return Record{}, utils.ErrKeyNotFound
 	}
@@ -40,7 +40,7 @@ func (m *Memtable) PrintAllRecords() {
 
 func (m *Memtable) Flush(directory string) *SSTable {
 	sortedEntries := m.returnAllRecordsInSortedOrder()
-	table := InitSSTableOnDisk(directory, castToRecordSlice(sortedEntries))
+	table := InitSSTableOnDisk(directory, castToRecordSlice(&sortedEntries))
 
 	return table
 }
@@ -65,14 +65,14 @@ func (m *Memtable) clear() {
 	m.sizeInBytes = 0
 }
 
-func castToRecordSlice(interfaceSlice []interface{}) []Record {
-	recordSlice := make([]Record, len(interfaceSlice))
-	for i, iface := range interfaceSlice {
+func castToRecordSlice(interfaceSlice *[]interface{}) *[]Record {
+	recordSlice := make([]Record, len(*interfaceSlice))
+	for i, iface := range *interfaceSlice {
 		record, ok := iface.(Record)
 		if !ok {
 			fmt.Errorf("element %d is not a Record", i)
 		}
 		recordSlice[i] = record
 	}
-	return recordSlice
+	return &recordSlice
 }

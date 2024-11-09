@@ -64,11 +64,11 @@ goos: darwin
 goarch: arm64
 cpu: Apple M3 Pro
                                  Ops                Time per op         Ops per sec
-BenchmarkDiskStore_Put-12    	 1000000	     10423 ns/op	     95939 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     10433 ns/op	     95846 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     10367 ns/op	     96461 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     10654 ns/op	     93861 ops/s
-BenchmarkDiskStore_Put-12    	 1000000	     10373 ns/op	     96400 ops/s
+BenchmarkDiskStore_Put-12    	 1000000	     9745 ns/op	         104326 ops/s
+BenchmarkDiskStore_Put-12    	 1000000	     9743 ns/op	         104354 ops/s
+BenchmarkDiskStore_Put-12    	 1000000	     9740 ns/op	         104464 ops/s
+BenchmarkDiskStore_Put-12    	 1000000	     9745 ns/op	         104327 ops/s
+BenchmarkDiskStore_Put-12    	 1000000	     9752 ns/op	         104146 ops/s
 ```
 
 
