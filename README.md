@@ -1,5 +1,18 @@
 # genesis
 
+**Table of Contents**
+1. [About](#About)
+2. [Architecture](#Architecture)
+   1. [Memtable](##Memtable-(Red-Black Tree))
+   2. [SSTable](##SSTable)
+      1. [Compaction](###Compaction)
+   4. [Write-Ahead-Log](##Write-Ahead-Log)
+3. [Complete Tree](#Complete-Tree)
+4. [Benchmarks](#Benchmarks)
+   1. [Full Tree ](###Full-Tree)
+5. [Feature Checklist](#Feature-Checklist)
+6. [References](#References)
+
 # About
 genesis is a disk-based, log-structured merge (LSM) tree key-value store. This project was originally based off the Bitcask research paper (which doesn't use LSM), but expanded upon and redesigned.
 Built purely for educational purposes.
