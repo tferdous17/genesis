@@ -122,13 +122,14 @@ Features in the works:
     - [x] Size-Tiered Compaction (based off Apache Cassandra)
 - [ ] Make this distributed
   - [ ] Data partitioning (sharding)
-    - [ ] Choose hashing strategy
-    - [ ] Create the actual nodes/shards
-  - [ ] Replication for fault tolerance
-  - [ ] Consensus algorithm (Paxos/Raft)
-  - [ ] Handle node failure
-  - [ ] Inter-node communication (RPC?)
-- [ ] (EXTRA) Generic key/value support (currently limited to strings)
+    - [ ] Implement consistent hashing
+  - [ ] Implement key routing
+  - [ ] Fault tolerance
+    - [ ] Can implement replication for each node
+  - [ ] Inter-node communication
+
+Extra:
+- [ ] Generic key/value support (currently limited to strings)
 
 # References
 - LSM Tree (ScyllaDB) - https://www.scylladb.com/glossary/log-structured-merge-tree/
