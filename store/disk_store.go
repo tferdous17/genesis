@@ -4,6 +4,7 @@ import (
 	"bitcask-go/utils"
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 )
@@ -35,6 +36,13 @@ func NewDiskStore() (*DiskStore, error) {
 	ds.writeAheadLog = logFile
 
 	return ds, err
+}
+
+func NewDiskStoreDistributed(numOfNodes int) *Cluster {
+	cluster := Cluster{}
+	cluster.initNodes(numOfNodes)
+
+	return &cluster
 }
 
 func (ds *DiskStore) Put(key *string, value *string) error {
@@ -113,8 +121,8 @@ func (ds *DiskStore) Delete(key string) error {
 	return nil
 }
 
-func (ds *DiskStore) ListOfAllKeys() {
-	ds.memtable.PrintAllRecords()
+func (ds *DiskStore) LengthOfMemtable() {
+	fmt.Println(len(ds.memtable.data.Keys()))
 }
 
 func (ds *DiskStore) FlushMemtable() {
