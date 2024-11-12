@@ -1,7 +1,7 @@
 package extra
 
 import (
-	"bitcask-go/internal"
+	"bitcask-go/store"
 	"bitcask-go/utils"
 )
 
@@ -20,7 +20,7 @@ const (
 
 type Node struct {
 	Key    string
-	Value  internal.Record
+	Value  store.Record
 	Parent *Node
 	Left   *Node
 	Right  *Node
@@ -32,7 +32,7 @@ type RedBlackTree struct {
 	size uint32
 }
 
-func (tree *RedBlackTree) Insert(key string, value internal.Record) {
+func (tree *RedBlackTree) Insert(key string, value store.Record) {
 	node := &Node{Key: key, Value: value, Color: RED}
 
 	if tree.root == nil { // If tree is empty
@@ -164,7 +164,7 @@ func (tree *RedBlackTree) rotateLeft(node *Node) {
 	node.Parent = rightChild
 }
 
-func (tree *RedBlackTree) Find(key string) (internal.Record, error) {
+func (tree *RedBlackTree) Find(key string) (store.Record, error) {
 	// basic BST search
 	currentNode := tree.root
 	for currentNode != nil {
@@ -177,15 +177,15 @@ func (tree *RedBlackTree) Find(key string) (internal.Record, error) {
 			currentNode = currentNode.Right
 		}
 	}
-	return internal.Record{}, utils.ErrKeyNotFound
+	return store.Record{}, utils.ErrKeyNotFound
 }
 
-func (tree *RedBlackTree) ReturnAllRecordsInSortedOrder() []internal.Record {
-	data := inorder(tree.root, []internal.Record{})
+func (tree *RedBlackTree) ReturnAllRecordsInSortedOrder() []store.Record {
+	data := inorder(tree.root, []store.Record{})
 	return data
 }
 
-func inorder(node *Node, data []internal.Record) []internal.Record {
+func inorder(node *Node, data []store.Record) []store.Record {
 	if node != nil {
 		data = inorder(node.Left, data)
 		data = append(data, node.Value)

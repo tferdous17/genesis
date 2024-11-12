@@ -34,3 +34,19 @@ func LogCYAN[T any](msg string, args ...T) {
 	}
 	logger.Printf(color.CyanString(msg), values...)
 }
+
+func LogRED[T any](msg string, args ...T) {
+	values := make([]interface{}, len(args))
+	for i, arg := range args {
+		values[i] = reflect.ValueOf(arg).Interface()
+	}
+	logger.Printf(color.RedString(msg), values...)
+}
+
+func LogYELLOW[T any](msg string, args ...T) {
+	values := make([]interface{}, len(args))
+	for i, arg := range args {
+		values[i] = reflect.ValueOf(arg).Interface()
+	}
+	logger.Printf(color.YellowString(msg), values...)
+}
