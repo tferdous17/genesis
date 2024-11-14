@@ -12,13 +12,13 @@ type Node struct {
 
 type Cluster struct {
 	hashRing *hashring.HashRing
-	Nodes    map[string]*Node
+	nodes    map[string]*Node
 }
 
 var nodeCount = 1
 
 func (c *Cluster) initNodes(numOfNodes int) {
-	c.Nodes = make(map[string]*Node)
+	c.nodes = make(map[string]*Node)
 	var nodeAddrs []string
 
 	for i := 0; i < numOfNodes; i++ {
@@ -27,7 +27,7 @@ func (c *Cluster) initNodes(numOfNodes int) {
 			ID:    fmt.Sprintf("node-%d", nodeCount),
 			Store: store,
 		}
-		c.Nodes[node.ID] = &node
+		c.nodes[node.ID] = &node
 		nodeCount++
 		nodeAddrs = append(nodeAddrs, node.ID)
 	}
@@ -37,7 +37,7 @@ func (c *Cluster) initNodes(numOfNodes int) {
 
 func (c *Cluster) Put(key, value string) {
 	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.Nodes[nodeAddr]
+	node, ok := c.nodes[nodeAddr]
 
 	if ok {
 		node.Store.Put(&key, &value)
@@ -46,7 +46,7 @@ func (c *Cluster) Put(key, value string) {
 
 func (c *Cluster) Get(key string) (string, error) {
 	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.Nodes[nodeAddr]
+	node, ok := c.nodes[nodeAddr]
 
 	if ok {
 		fmt.Println("key found at " + nodeAddr)
@@ -58,7 +58,7 @@ func (c *Cluster) Get(key string) (string, error) {
 
 func (c *Cluster) Delete(key string) error {
 	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.Nodes[nodeAddr]
+	node, ok := c.nodes[nodeAddr]
 
 	if ok {
 		fmt.Println("key deleted at " + nodeAddr)
@@ -69,7 +69,7 @@ func (c *Cluster) Delete(key string) error {
 }
 
 func (c *Cluster) PrintDiagnostics() {
-	for k, v := range c.Nodes {
+	for k, v := range c.nodes {
 		fmt.Printf(k + " num keys: ")
 		v.Store.LengthOfMemtable()
 	}
