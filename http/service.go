@@ -1,7 +1,6 @@
 package http
 
 import (
-	"bitcask-go/store"
 	"bitcask-go/utils"
 	"encoding/json"
 	"fmt"
@@ -11,18 +10,33 @@ import (
 	"strings"
 )
 
-type Service struct {
-	addr  string
-	ln    net.Listener
-	mux   *http.ServeMux
-	store store.Store
+type Store interface {
+	Put(key *string, value *string) error
+	Get(key string) (string, error)
+	Delete(key string) error
+	Close() bool
 }
 
-// NewService returns an unitialized HTTP service
-func NewService(addr string, store store.Store) *Service {
+// not sure if this is the best way to go about this but it works
+type Cluster interface {
+	Open()
+	Put(key string, value string) error
+	Get(key string) (string, error)
+	Delete(key string) error
+}
+
+type Service struct {
+	addr    string
+	ln      net.Listener
+	mux     *http.ServeMux
+	cluster Cluster
+}
+
+// NewClusterService returns an unitialized HTTP service
+func NewClusterService(addr string, cluster Cluster) *Service {
 	return &Service{
-		addr:  addr,
-		store: store,
+		addr:    addr,
+		cluster: cluster,
 	}
 }
 
@@ -85,7 +99,7 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for k, v := range m {
-			if err := s.store.Put(&k, &v); err != nil {
+			if err := s.cluster.Put(k, v); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
@@ -96,7 +110,7 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 		if k == "" {
 			w.WriteHeader(http.StatusBadRequest)
 		}
-		val, err := s.store.Get(k)
+		val, err := s.cluster.Get(k)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -108,7 +122,7 @@ func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
 		if k == "" {
 			w.WriteHeader(http.StatusBadRequest)
 		}
-		err := s.store.Delete(k)
+		err := s.cluster.Delete(k)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
