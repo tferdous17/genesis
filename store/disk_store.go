@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 )
 
 type DiskStore struct {
+	mu                 sync.Mutex
 	memtable           *Memtable
 	writeAheadLog      *os.File
 	bucketManager      *BucketManager
@@ -26,6 +28,7 @@ const (
 
 const FlushSizeThreshold = 1024 * 1024 * 256
 
+// NewDiskStore starts up a single-node store
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable(), bucketManager: InitBucketManager()}
 
@@ -38,6 +41,7 @@ func NewDiskStore() (*DiskStore, error) {
 	return ds, err
 }
 
+// NewDiskStoreDistributed starts up a cluster of N nodes
 func NewDiskStoreDistributed(numOfNodes int) *Cluster {
 	cluster := Cluster{}
 	cluster.initNodes(numOfNodes)
@@ -46,6 +50,10 @@ func NewDiskStoreDistributed(numOfNodes int) *Cluster {
 }
 
 func (ds *DiskStore) Put(key *string, value *string) error {
+	// lock access to the store so only 1 goroutine at a time can write to it, preventing race conditions
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
 	err := utils.ValidateKV(key, value)
 	if err != nil {
 		return err
@@ -82,6 +90,9 @@ func (ds *DiskStore) Put(key *string, value *string) error {
 }
 
 func (ds *DiskStore) Get(key string) (string, error) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
 	// log the get operation first
 	//ds.appendOperationToWAL(GET, &Record{Key: key})
 
@@ -98,6 +109,9 @@ func (ds *DiskStore) Get(key string) (string, error) {
 }
 
 func (ds *DiskStore) Delete(key string) error {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
 	// * this is really just appending a new entry but with a tombstone value and empty key
 	value := ""
 	header := Header{
