@@ -1,12 +1,18 @@
 package store
 
 import (
+	"bitcask-go/http"
 	"fmt"
 	"github.com/serialx/hashring"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 type Node struct {
-	ID    string // probably server address or something?
+	ID    string
+	addr  string
 	Store *DiskStore
 }
 
@@ -15,7 +21,7 @@ type Cluster struct {
 	nodes    map[string]*Node
 }
 
-var nodeCount = 1
+var startingNodePort = 11000
 
 func (c *Cluster) initNodes(numOfNodes int) {
 	c.nodes = make(map[string]*Node)
@@ -24,32 +30,60 @@ func (c *Cluster) initNodes(numOfNodes int) {
 	for i := 0; i < numOfNodes; i++ {
 		store, _ := NewDiskStore()
 		node := Node{
-			ID:    fmt.Sprintf("node-%d", nodeCount),
+			ID:    fmt.Sprintf("node-%d", i+1),
+			addr:  fmt.Sprintf(":%d", startingNodePort),
 			Store: store,
 		}
-		c.nodes[node.ID] = &node
-		nodeCount++
-		nodeAddrs = append(nodeAddrs, node.ID)
+		c.nodes[node.addr] = &node
+		startingNodePort++
+		nodeAddrs = append(nodeAddrs, node.addr)
 	}
 
 	c.hashRing = hashring.New(nodeAddrs)
 }
 
-func (c *Cluster) Put(key, value string) {
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.nodes[nodeAddr]
+var defaultPort = ":8080"
 
-	if ok {
-		node.Store.Put(&key, &value)
+func (c *Cluster) Open() {
+	clusterService := http.NewClusterService(defaultPort, c)
+	clusterService.Start()
+
+	fmt.Println("HTTP server started successfully")
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+	// Block until one of the signals above is received
+	select {
+	case <-signalCh:
+		log.Println("signal received, shutting down...")
+		err := clusterService.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+		c.PrintDiagnostics()
 	}
 }
 
+func (c *Cluster) Put(key, value string) error {
+	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
+	fmt.Printf("key = %s\t", key)
+	fmt.Printf("added @ node addr = %s\n", nodeAddr)
+
+	node, ok := c.nodes[nodeAddr]
+
+	if ok {
+		return node.Store.Put(&key, &value)
+	}
+	return nil
+}
+
 func (c *Cluster) Get(key string) (string, error) {
+	fmt.Printf("key = %s\t", key)
 	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
 	node, ok := c.nodes[nodeAddr]
 
 	if ok {
-		fmt.Println("key found at " + nodeAddr)
+		fmt.Printf("found @ node addr = %s\n", nodeAddr)
 		return node.Store.Get(key)
 	}
 
@@ -61,7 +95,7 @@ func (c *Cluster) Delete(key string) error {
 	node, ok := c.nodes[nodeAddr]
 
 	if ok {
-		fmt.Println("key deleted at " + nodeAddr)
+		fmt.Printf("deleted @ node addr = %s\n", nodeAddr)
 		return node.Store.Delete(key)
 	}
 
@@ -69,8 +103,9 @@ func (c *Cluster) Delete(key string) error {
 }
 
 func (c *Cluster) PrintDiagnostics() {
-	for k, v := range c.nodes {
-		fmt.Printf(k + " num keys: ")
+	fmt.Println("DIAGNOSTICS:")
+	for _, v := range c.nodes {
+		fmt.Printf(v.ID + " @ address " + v.addr + " , num keys: ")
 		v.Store.LengthOfMemtable()
 	}
 }
