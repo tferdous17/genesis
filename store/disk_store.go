@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bitcask-go/proto"
 	"bitcask-go/utils"
 	"bytes"
 	"errors"
@@ -87,6 +88,12 @@ func (ds *DiskStore) Put(key *string, value *string) error {
 	}
 
 	return nil
+}
+
+func (ds *DiskStore) PutRecordFromGRPC(record *proto.Record) {
+	rec := convertProtoRecordToStoreRecord(record)
+	ds.memtable.Put(&record.Key, rec)
+	fmt.Printf("stored proto record with key = %s into memtable", rec.Key)
 }
 
 func (ds *DiskStore) Get(key string) (string, error) {
