@@ -22,8 +22,9 @@ type Node struct {
 }
 
 type Cluster struct {
-	hashRing *hashring.HashRing
-	nodes    map[string]*Node
+	hashRing    *hashring.HashRing
+	nodes       map[string]*Node
+	accumulator *dataMigrationAccumulator
 }
 
 var nodeCounter uint32 = 1
@@ -31,6 +32,8 @@ var currentNodePort uint32 = 11000
 
 func (c *Cluster) initNodes(numOfNodes int) {
 	c.nodes = make(map[string]*Node)
+	c.accumulator = &dataMigrationAccumulator{}
+
 	var nodeAddrs []string
 
 	for i := 0; i < numOfNodes; i++ {
@@ -50,54 +53,7 @@ func (c *Cluster) initNodes(numOfNodes int) {
 	}
 
 	c.hashRing = hashring.New(nodeAddrs)
-}
-
-func (c *Cluster) TransferDataBetweenNodes(srcNodeAddr string, destNodeServerAddr string) {
-	client, conn := StartGRPCClient(destNodeServerAddr)
-	defer conn.Close()
-
-	rec := []Record{
-		{
-			Header: Header{
-				CheckSum:  1,
-				Tombstone: 2,
-				TimeStamp: 3,
-				KeySize:   4,
-				ValueSize: 5,
-			},
-			Key:        "tesdfdsfds",
-			Value:      "dbvdbdf",
-			RecordSize: 10,
-		},
-		{
-			Header: Header{
-				CheckSum:  4,
-				Tombstone: 1,
-				TimeStamp: 7,
-				KeySize:   6,
-				ValueSize: 5,
-			},
-			Key:        "dfgdfgdfg",
-			Value:      "xvv",
-			RecordSize: 14,
-		},
-	}
-
-	kvPairs := convertRecordsToProtoKVPairs(&rec)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	res, err := client.MigrateKeyValuePairs(ctx, &proto.KeyValueMigrationRequest{
-		SourceNodeAddr: srcNodeAddr,
-		DestNodeAddr:   destNodeServerAddr,
-		KvPairs:        kvPairs,
-	})
-	if err != nil {
-		utils.LogRED("err = %s", err)
-	}
-
-	fmt.Println(res)
-	//transferKVPairs(client, srcNodeAddr, destNodeServerAddr, &rec)
+	c.accumulator = &dataMigrationAccumulator{}
 }
 
 func (c *Cluster) AddNode() {
@@ -108,11 +64,15 @@ func (c *Cluster) AddNode() {
 		Store: store,
 	}
 	c.nodes[node.Addr] = &node
+
+	StartGRPCServer(node.Addr, &node)
+
 	atomic.AddUint32(&nodeCounter, 1)
 	atomic.AddUint32(&currentNodePort, 1)
 
-	// ? reassign hashring to whats returned by AddNode()?
+	// refresh the hash ring w/ new node
 	c.hashRing = c.hashRing.AddNode(node.Addr)
+	c.rebalance()
 }
 
 func (c *Cluster) RemoveNode(addr string) {
@@ -133,16 +93,6 @@ func (c *Cluster) Open() {
 	fmt.Println("HTTP server started successfully")
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
-
-	fmt.Println("calling transfer nodes")
-	// * works
-	c.TransferDataBetweenNodes(":11000", ":11001")
-
-	res, err := c.nodes[":11001"].Store.Get("dfgdfgdfg")
-	if err != nil {
-		utils.LogRED("err = %s", err)
-	}
-	utils.LogYELLOW("res after transferring = %s", res)
 
 	// Block until one of the signals above is received
 	select {
@@ -201,6 +151,84 @@ func (c *Cluster) PrintDiagnostics() {
 		fmt.Printf(v.ID + " @ address " + v.Addr + " , num keys: ")
 		v.Store.LengthOfMemtable()
 	}
+}
+
+type dataMigrationAccumulator struct {
+	data map[string]map[string][]Record
+}
+
+func (d *dataMigrationAccumulator) Init(nodeAddresses []string) {
+	d.data = make(map[string]map[string][]Record)
+	for _, addr := range nodeAddresses {
+		d.data[addr] = make(map[string][]Record)
+	}
+}
+
+func (d *dataMigrationAccumulator) Append(srcNode string, destNode string, data *Record) {
+	_, ok := d.data[srcNode][destNode]
+	if !ok {
+		d.data[srcNode][destNode] = make([]Record, 0)
+	}
+	d.data[srcNode][destNode] = append(d.data[srcNode][destNode], *data)
+}
+
+func (d *dataMigrationAccumulator) ClearAccumulator() {
+	d.data = nil
+}
+
+func (c *Cluster) getAllNodeAddrs() []string {
+	var addrs []string
+	for addr, _ := range c.nodes {
+		addrs = append(addrs, addr)
+	}
+	return addrs
+}
+
+func (c *Cluster) rebalance() {
+	// brute way is to just literally go thru every key in the system
+	// and see if the key's GetNode pos doesn't match up
+	c.accumulator.Init(c.getAllNodeAddrs())
+
+	for _, node := range c.nodes {
+		pairsMap := node.Store.memtable.GetAllKVPairs()
+
+		for key, record := range pairsMap {
+			newAddr, _ := c.hashRing.GetNode(key)
+
+			if newAddr != node.Addr {
+				c.accumulator.Append(node.Addr, newAddr, &record)
+			}
+		}
+	}
+
+	for srcNode, v := range c.accumulator.data {
+		for destNode, pairs := range v {
+			if len(pairs) > 0 {
+				c.transferDataBetweenNodes(srcNode, destNode, &pairs)
+			}
+		}
+	}
+	c.accumulator.ClearAccumulator()
+}
+
+func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAddr string, data *[]Record) {
+	client, conn := StartGRPCClient(destNodeServerAddr)
+	defer conn.Close()
+
+	kvPairs := convertRecordsToProtoKVPairs(data)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := client.MigrateKeyValuePairs(ctx, &proto.KeyValueMigrationRequest{
+		SourceNodeAddr: srcNodeAddr,
+		DestNodeAddr:   destNodeServerAddr,
+		KvPairs:        kvPairs,
+	})
+	if err != nil {
+		utils.LogRED("err = %s", err)
+	}
+
+	fmt.Println(res)
 }
 
 func convertProtoRecordToStoreRecord(record *proto.Record) *Record {
