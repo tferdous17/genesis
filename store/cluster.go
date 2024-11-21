@@ -197,6 +197,7 @@ func (c *Cluster) rebalance() {
 
 			if newAddr != node.Addr {
 				c.accumulator.Append(node.Addr, newAddr, &record)
+				node.Store.memtable.data.Remove(key)
 			}
 		}
 	}
