@@ -1,8 +1,8 @@
 package extra
 
 import (
-	"bitcask-go/store"
-	"bitcask-go/utils"
+	"genesis/store"
+	"genesis/utils"
 )
 
 /*

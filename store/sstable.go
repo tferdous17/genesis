@@ -1,11 +1,11 @@
 package store
 
 import (
-	"bitcask-go/utils"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"genesis/utils"
 	"io"
 	"os"
 	"strings"
@@ -17,7 +17,7 @@ const (
 	IndexFileExtension string = ".index"
 	BloomFileExtension string = ".bloom"
 
-	SparseIndexSampleSize int = 100
+	SparseIndexSampleSize int = 1000
 )
 
 var sstTableCounter uint32
@@ -84,7 +84,7 @@ func writeEntriesToSST(sortedEntries *[]Record, table *SSTable) {
 	table.minKey = (*sortedEntries)[0].Key
 	table.maxKey = (*sortedEntries)[len(*sortedEntries)-1].Key
 
-	// * every 100th key will be put into the sparse index
+	// * every 1000th key will be put into the sparse index
 	for i := range *sortedEntries {
 		table.sizeInBytes += (*sortedEntries)[i].RecordSize
 		if i%SparseIndexSampleSize == 0 {

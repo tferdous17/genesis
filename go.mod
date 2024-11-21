@@ -1,4 +1,4 @@
-module bitcask-go
+module genesis
 
 go 1.22.7
 

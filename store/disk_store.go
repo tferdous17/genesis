@@ -1,11 +1,11 @@
 package store
 
 import (
-	"bitcask-go/proto"
-	"bitcask-go/utils"
 	"bytes"
 	"errors"
 	"fmt"
+	"genesis/proto"
+	"genesis/utils"
 	"os"
 	"sync"
 	"time"

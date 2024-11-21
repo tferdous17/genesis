@@ -1,9 +1,9 @@
 package store
 
 import (
-	"bitcask-go/proto"
 	"context"
 	"fmt"
+	"genesis/proto"
 	"google.golang.org/grpc"
 	"net"
 )

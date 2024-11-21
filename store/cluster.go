@@ -1,11 +1,11 @@
 package store
 
 import (
-	"bitcask-go/http"
-	"bitcask-go/proto"
-	"bitcask-go/utils"
 	"context"
 	"fmt"
+	"genesis/http"
+	"genesis/proto"
+	"genesis/utils"
 	"github.com/serialx/hashring"
 	"google.golang.org/grpc"
 	"log"
