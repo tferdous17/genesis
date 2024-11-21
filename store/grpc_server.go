@@ -19,7 +19,6 @@ func (d *dataMigrationServer) MigrateKeyValuePairs(ctx context.Context, req *pro
 	var migrationResults []*proto.MigrationResult
 
 	for i := range req.KvPairs {
-		fmt.Println("storing data into node at address ", d.underlyingNode.Addr)
 		d.underlyingNode.Store.PutRecordFromGRPC(req.KvPairs[i].Record)
 
 		res := proto.MigrationResult{
@@ -37,7 +36,7 @@ func (d *dataMigrationServer) MigrateKeyValuePairs(ctx context.Context, req *pro
 	}, nil
 }
 
-func StartGRPCServer(addr string, node *Node) {
+func StartGRPCServer(addr string, node *Node) *grpc.Server {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		fmt.Println(err)
@@ -54,4 +53,5 @@ func StartGRPCServer(addr string, node *Node) {
 			fmt.Println(err)
 		}
 	}()
+	return server
 }
