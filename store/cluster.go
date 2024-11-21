@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/serialx/hashring"
+	"google.golang.org/grpc"
 	"log"
 	"os"
 	"os/signal"
@@ -16,9 +17,10 @@ import (
 )
 
 type Node struct {
-	ID    string
-	Addr  string
-	Store *DiskStore
+	server *grpc.Server
+	ID     string
+	Addr   string
+	Store  *DiskStore
 }
 
 type Cluster struct {
@@ -45,7 +47,7 @@ func (c *Cluster) initNodes(numOfNodes int) {
 		}
 		c.nodes[node.Addr] = &node
 
-		StartGRPCServer(node.Addr, &node)
+		node.server = StartGRPCServer(node.Addr, &node)
 
 		atomic.AddUint32(&currentNodePort, 1)
 		atomic.AddUint32(&nodeCounter, 1)
@@ -65,7 +67,7 @@ func (c *Cluster) AddNode() {
 	}
 	c.nodes[node.Addr] = &node
 
-	StartGRPCServer(node.Addr, &node)
+	node.server = StartGRPCServer(node.Addr, &node)
 
 	atomic.AddUint32(&nodeCounter, 1)
 	atomic.AddUint32(&currentNodePort, 1)
@@ -78,7 +80,10 @@ func (c *Cluster) AddNode() {
 func (c *Cluster) RemoveNode(addr string) {
 	_, ok := c.nodes[addr]
 	if ok {
-		c.hashRing.RemoveNode(addr)
+		c.hashRing = c.hashRing.RemoveNode(addr)
+		c.rebalance()
+		c.nodes[addr].server.GracefulStop()
+		delete(c.nodes, addr)
 	} else {
 		fmt.Printf("node @ addr %s not found", addr)
 	}
@@ -103,7 +108,6 @@ func (c *Cluster) Open() {
 		if err != nil {
 			fmt.Println(err)
 		}
-
 	}
 }
 
@@ -176,14 +180,6 @@ func (d *dataMigrationAccumulator) ClearAccumulator() {
 	d.data = nil
 }
 
-func (c *Cluster) getAllNodeAddrs() []string {
-	var addrs []string
-	for addr, _ := range c.nodes {
-		addrs = append(addrs, addr)
-	}
-	return addrs
-}
-
 func (c *Cluster) rebalance() {
 	// brute way is to just literally go thru every key in the system
 	// and see if the key's GetNode pos doesn't match up
@@ -228,8 +224,15 @@ func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAdd
 	if err != nil {
 		utils.LogRED("err = %s", err)
 	}
-
 	fmt.Println(res)
+}
+
+func (c *Cluster) getAllNodeAddrs() []string {
+	var addrs []string
+	for addr, _ := range c.nodes {
+		addrs = append(addrs, addr)
+	}
+	return addrs
 }
 
 func convertProtoRecordToStoreRecord(record *proto.Record) *Record {
