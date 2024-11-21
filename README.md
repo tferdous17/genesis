@@ -7,6 +7,7 @@
    2. [SSTable](#sstable)
       1. [Compaction](#compaction)
    3. [Write-Ahead-Log](#write-ahead-log)
+   4. [Distributed Design](#distributed-design)
 3. [Complete Tree](#complete-Tree)
 4. [Benchmarks](#benchmarks-11824)
    1. [Full Tree ](#full-tree)
@@ -14,11 +15,11 @@
 6. [References](#references)
 
 # About
-genesis is a disk-based, log-structured merge (LSM) tree key-value store. This project was originally based off the Bitcask research paper (which doesn't use LSM), but expanded upon and redesigned.
+genesis is a distributed log-structured merge (LSM) tree key-value store. This project was originally based off the Bitcask research paper (which isnt distributed nor uses LSM), but expanded upon and redesigned.
 Built purely for educational purposes.
 
 # Architecture
-Overview of the architecture, from the Memtable implemention, to how the data is stored on disk in the form of SSTables.
+Overview of the architecture, from the Memtable implemention, to how the data is stored on disk in the form of SSTables, and lastly how its distributed.
 
 ![LSM Architecture](extra/lsm.png)
 Source: “A Survey of LSM-Tree Based Indexes, Data Systems and KV-Stores.” arxiv.org/html/2402.10460v2.
@@ -68,6 +69,15 @@ genesis supports the following operations:
 
 Important to note is that genesis utilizes **tombstone-based garbage collection**. When deleting an existing key, it will simply append a tombstone value in the header and re-add it to the memtable (which will eventually get flushed to disk). The _actual_ deletion process occurs in the SSTable compaction algorithm.
 
+# Distributed Design
+This key-value store is made to be distributed through the use of data partitioning and **sharding**. Each node of this system
+is a self-contained key value store (i.e., a shard), where each node holds a _subset_ of the overall data and is hosted on a separate port. Anytime a key value pair is inserted
+to the system by a client, it goes through a routing layer that utilizes [consistent hashing](https://en.wikipedia.org/wiki/Consistent_hashing) and is then routed to the correct node—thus
+achieving **consistent** data partitioning.
+
+Genesis can support a multitude of concurrent nodes and utilizes [gRPC](https://grpc.io/) for inter-node communication, primarily in the case of
+**data rebalancing** (triggered when a node is added or removed). Each node is wrapped in a gRPC server to accept incoming requests, and gRPC clients are spawned (to set up traditional client-server comms) only when data migration is needed. 
+
 
 # Benchmarks
 
@@ -105,12 +115,14 @@ Features in the works:
 - [x] Support Put(Key, Value)
 - [x] Support Get(Key)
 - [x] Support Delete(Key)
-- [x] Crash safety (CRC)
+  - [x] Tombstone-based garbage collection
+- [x] Ensure data integrity
+  - [x] Implement cyclic redundancy checks
 - [x] Convert implementation to Log-Structured Merge Tree
   - [x] Swap out keydir with red-black tree memtable
     - [x] Implement red-black tree
   - [x] Write-ahead-logging (WAL)
-    - [x] Create WAL file and write to it after Put(k, v) operations 
+    - [x] Create WAL file and write to it after store operations 
     - [ ] Reconstruct memtable with WAL in case of crash
   - [x] Implement SSTables
     - [x] Flush memtable to data file in sorted order
@@ -118,15 +130,17 @@ Features in the works:
     - [x] Index file
     - [x] Bloom filter
     - [x] Multiple levels (higher levels store larger, compacted tables)
-    - [x] Get(key) operation on tables
+    - [x] Get(key) operation on tables (disk)
     - [x] Size-Tiered Compaction (based off Apache Cassandra)
-- [ ] Make this distributed
-  - [ ] Data partitioning (sharding)
-    - [ ] Implement consistent hashing
-  - [ ] Implement key routing
-  - [ ] Fault tolerance
-    - [ ] Can implement replication for each node
-  - [ ] Inter-node communication
+- [x] Make this distributed
+  - [x] Data partitioning (sharding)
+    - [x] Implement consistent hashing
+  - [x] Implement key routing
+  - [x] Set up gRPC, Protobuf for inter-node communication
+  - [x] Automatically rebalance data among all nodes when additional nodes are added/removed
+  - [x] Fault tolerance
+    - [x] Data is automatically migrated to active nodes upon node failure
+    - [ ] Can optionally implement replication and Raft on top of that
 
 Extra:
 - [ ] Generic key/value support (currently limited to strings)
@@ -140,4 +154,6 @@ Extra:
 - A Survey of LSM-Tree based Indexes, Data Systems and KV-stores - https://arxiv.org/html/2402.10460v2
 - Bloom Filters - https://harish-bhattbhatt.medium.com/bloom-filter-application-and-implementation-52c6d4512c21
 - Size Tiered Compaction - https://cassandra.apache.org/doc/stable/cassandra/operating/compaction/stcs.html
-- Sized Tiered Compaction more -https://shrikantbang.wordpress.com/2014/04/22/size-tiered-compaction-strategy-in-apache-cassandra/
+- Sized Tiered Compaction more - https://shrikantbang.wordpress.com/2014/04/22/size-tiered-compaction-strategy-in-apache-cassandra/
+- HTTP Layer - https://github.com/otoolep/go-httpd/blob/master/httpd/service.go
+- gRPC - https://grpc.io/docs/what-is-grpc/introduction/
