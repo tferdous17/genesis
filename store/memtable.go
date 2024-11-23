@@ -1,8 +1,8 @@
-package internal
+package store
 
 import (
-	"bitcask-go/utils"
 	"fmt"
+	"genesis/utils"
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
 )
 
@@ -32,6 +32,17 @@ func (m *Memtable) Get(key *string) (Record, error) {
 		return Record{}, utils.ErrKeyNotFound
 	}
 	return val.(Record), nil
+}
+
+func (m *Memtable) GetAllKVPairs() map[string]Record {
+	kvPairs := make(map[string]Record)
+
+	for _, k := range m.data.Keys() {
+		val, _ := m.data.Get(k)
+		kvPairs[k.(string)] = val.(Record)
+	}
+
+	return kvPairs
 }
 
 func (m *Memtable) PrintAllRecords() {

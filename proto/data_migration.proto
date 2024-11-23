@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+option go_package = "github.com/tferdous17/genesis/proto";
+
+service DataMigrationService {
+  rpc MigrateKeyValuePairs(KeyValueMigrationRequest) returns (KeyValueMigrationResponse);
+}
+
+message KeyValueMigrationRequest {
+  string source_node_addr = 1;
+  string dest_node_addr = 2;
+  repeated KVPair kv_pairs = 3;
+}
+
+message KeyValueMigrationResponse {
+  bool success = 1;
+  string error_msg = 2;
+  repeated MigrationResult migration_results = 3;
+}
+
+message MigrationResult {
+  string key = 1;
+  bool success = 2;
+  string error_msg = 3;
+}
+
+message KVPair {
+  Record record = 1;
+}
+
+message Header {
+  uint32 checksum = 1;
+  uint32 tombstone = 2;
+  uint32 timestamp = 3;
+  uint32 key_size = 4;
+  uint32 value_size = 5;
+}
+
+message Record {
+  Header header = 1;
+  string key = 2;
+  string value = 3;
+  uint32 record_size = 4;
+}
+
+

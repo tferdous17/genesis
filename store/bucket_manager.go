@@ -1,7 +1,7 @@
-package internal
+package store
 
 import (
-	"bitcask-go/utils"
+	"genesis/utils"
 )
 
 type BucketManager struct {

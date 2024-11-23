@@ -1,14 +1,18 @@
-package internal
+package store
 
 import (
-	"bitcask-go/utils"
 	"bytes"
 	"errors"
+	"fmt"
+	"genesis/proto"
+	"genesis/utils"
 	"os"
+	"sync"
 	"time"
 )
 
 type DiskStore struct {
+	mu                 sync.Mutex
 	memtable           *Memtable
 	writeAheadLog      *os.File
 	bucketManager      *BucketManager
@@ -25,6 +29,7 @@ const (
 
 const FlushSizeThreshold = 1024 * 1024 * 256
 
+// NewDiskStore starts up a single-node store
 func NewDiskStore() (*DiskStore, error) {
 	ds := &DiskStore{memtable: NewMemtable(), bucketManager: InitBucketManager()}
 
@@ -37,7 +42,19 @@ func NewDiskStore() (*DiskStore, error) {
 	return ds, err
 }
 
+// NewDiskStoreDistributed starts up a cluster of N nodes
+func NewDiskStoreDistributed(numOfNodes int) *Cluster {
+	cluster := Cluster{}
+	cluster.initNodes(numOfNodes)
+
+	return &cluster
+}
+
 func (ds *DiskStore) Put(key *string, value *string) error {
+	// lock access to the store so only 1 goroutine at a time can write to it, preventing race conditions
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
 	err := utils.ValidateKV(key, value)
 	if err != nil {
 		return err
@@ -73,7 +90,16 @@ func (ds *DiskStore) Put(key *string, value *string) error {
 	return nil
 }
 
+func (ds *DiskStore) PutRecordFromGRPC(record *proto.Record) {
+	rec := convertProtoRecordToStoreRecord(record)
+	ds.memtable.Put(&record.Key, rec)
+	fmt.Printf("stored proto record with key = %s into memtable", rec.Key)
+}
+
 func (ds *DiskStore) Get(key string) (string, error) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
 	// log the get operation first
 	//ds.appendOperationToWAL(GET, &Record{Key: key})
 
@@ -90,6 +116,9 @@ func (ds *DiskStore) Get(key string) (string, error) {
 }
 
 func (ds *DiskStore) Delete(key string) error {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
 	// * this is really just appending a new entry but with a tombstone value and empty key
 	value := ""
 	header := Header{
@@ -113,8 +142,8 @@ func (ds *DiskStore) Delete(key string) error {
 	return nil
 }
 
-func (ds *DiskStore) ListOfAllKeys() {
-	ds.memtable.PrintAllRecords()
+func (ds *DiskStore) LengthOfMemtable() {
+	fmt.Println(len(ds.memtable.data.Keys()))
 }
 
 func (ds *DiskStore) FlushMemtable() {

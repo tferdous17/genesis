@@ -1,9 +1,9 @@
-package internal
+package store
 
 import (
-	"bitcask-go/utils"
 	"bytes"
 	"encoding/binary"
+	"genesis/utils"
 	"hash/crc32"
 )
 
