@@ -8,22 +8,20 @@ import (
 )
 
 /*
-The format for each key-value on disk is as follows:
+The format for each key-value (including header) on disk is as follows:
 
-| timestamp | key_size | value_size | key | value |
-
-timestamp, key_size, value_size form the header of the entry and each of these must be 4 bytes at most
-thus header size is fixed at a length of 12 bytes
+| CheckSum | Tombstone | TimeStamp | KeySize | ValueSize | Key | Value | RecordSize |
 */
 const headerSize = 17
 
-// KeyEntry holds metadata about the KV pair, which is what we will insert into the keydir
+// KeyEntry holds metadata about the KV pair
 type KeyEntry struct {
 	TimeStamp     uint32
 	ValuePosition uint32
 	EntrySize     uint32
 }
 
+// Header all fields in header are of fixed size, amounting to 17 bytes total
 type Header struct {
 	CheckSum  uint32
 	Tombstone uint8
@@ -112,21 +110,14 @@ func (r *Record) Size() uint32 {
 }
 
 func (r *Record) CalculateChecksum() uint32 {
-	/*
-		compute a checksum for the ENTIRE entry, not just the value itself
-		i suppose this is more secure? since it accounts for if ANY fields change
-
-		crc.checksum takes a []byte buf as input, so lets try encoding the entire record into a
-		byte buffer and then calculate the checksum based on that
-		we only want to calculate it from tstamp...value so go from [4:]
-	*/
+	// Compute checksum for entire record, used for data integrity purposes
 	headerBuf := new(bytes.Buffer)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.Tombstone)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.TimeStamp)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.KeySize)
 	binary.Write(headerBuf, binary.LittleEndian, &r.Header.ValueSize)
 
-	// cant append a []byte directly into a []byte, so destructure the val into indiv bytes
+	// cant append a []byte directly into a []byte, so destructure the val into individual bytes
 	kvBuf := append([]byte(r.Key), []byte(r.Value)...)
 
 	buf := append(headerBuf.Bytes(), kvBuf...)

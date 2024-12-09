@@ -43,6 +43,13 @@ func InitEmptyBucket() *Bucket {
 	return bucket
 }
 
+// AdjustSizeThresholdParams bucketLow and bucketHigh determine how close to the avg bucket size an SSTable can be.
+// By default, it can be either 50% lower or 50% higher.
+func (b *Bucket) AdjustSizeThresholdParams(bucketLow, bucketHigh float32) {
+	b.bucketLow = bucketLow
+	b.bucketHigh = bucketHigh
+}
+
 func (b *Bucket) AppendTableToBucket(table *SSTable) {
 	if table.sizeInBytes < b.minTableSize {
 		return

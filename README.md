@@ -2,24 +2,103 @@
 
 **Table of Contents**
 1. [About](#about)
-2. [Architecture](#architecture)
+2. [Example Usage](#example-usage)
+3. [Architecture](#architecture)
    1. [Memtable](#memtable-red-black-tree)
    2. [SSTable](#sstable)
       1. [Compaction](#compaction)
    3. [Write-Ahead-Log](#write-ahead-log)
-   4. [Distributed Design](#distributed-design)
-3. [Complete Tree](#complete-Tree)
-4. [Benchmarks](#benchmarks-11824)
-   1. [Full Tree ](#full-tree)
-5. [Feature Checklist](#feature-checklist)
-6. [References](#references)
+   4. [Distributed Architecture](#distributed-architecture)
+4. [Complete Tree](#complete-Tree)
+5. [Benchmarks](#benchmarks)
+   1. [Full Tree](#full-tree)
+6. [Feature Checklist](#feature-checklist)
+7. [References](#references)
 
 # About
 genesis is a distributed log-structured merge (LSM) tree key-value store. This project was originally based off the Bitcask research paper (which isnt distributed nor uses LSM), but expanded upon and redesigned.
 Built purely for educational purposes.
 
+# Example Usage
+
+### Quick Start
+
+Clone the repository and get started by running `go run main.go` in the terminal/command line.
+
+By default, the store will open with **5** nodes (self-contained KV stores). You can modify this within the `main.go` file.
+```go
+c := store.NewDiskStoreDistributed(5)
+c.Open()
+```
+This will start an HTTP server on port `:8080`, which is what you can use to put, get, or delete keys.
+As for the nodes themselves, they are hosted starting from port `:11000` to `:11004` in the case of 5 nodes. However,
+keep in mind that the nodes themselves at the aforementioned ports **do not** accept HTTP requests, as this would bypass
+the consistent hashing & routing layer. Instead any request must go through port `:8080`.
+
+### Put, Get, Delete key-value pairs
+
+To Put, Get, or Delete key-value pairs, you can start genesis in the terminal and in another terminal tab, you can use `curl` in the following manner on `:8080/key`:
+```json
+curl -XPOST localhost:8080/key -d '{"user1": "batman", "user2": "superman", "user3": "captain america"}'
+
+curl -XGET localhost:8080/key/user2
+-> superman
+
+curl -XDELETE localhost:8080/key/user3
+```
+
+On the other terminal tab, you will see print statements to confirm the operations:
+```json
+key = user1	added @ node addr = :11004
+key = user2	added @ node addr = :11001
+key = user3	added @ node addr = :11003
+deleted user3 @ node addr = :11003
+```
+
+### Add additional nodes
+To add additional nodes and actually see the data redistribution in action, we can first add 50 key-value pairs:
+```
+curl -XPOST localhost:8080/key -d '{
+    "user1": "batman", "user2": "superman", "user3": "captain america",
+    "user4": "ironman", "user5": "thor", "user6": "hulk",
+    "user7": "black widow", "user8": "black panther", "user9": "spiderman",
+    "user10": "scarlet witch", "user11": "vision", "user12": "doctor strange",
+    "user13": "antman", "user14": "hawk eye", "user15": "winter soldier",
+    "user16": "falcon", "user17": "loki", "user18": "nick fury",
+    "user19": "gamora", "user20": "star lord", "user21": "drax",
+    "user22": "rocket", "user23": "groot", "user24": "mantis",
+    "user25": "wong", "user26": "shang chi", "user27": "kamala khan",
+    "user28": "moon knight", "user29": "blade", "user30": "deadpool",
+    "user31": "jessica jones", "user32": "luke cage", "user33": "iron fist",
+    "user34": "the punisher", "user35": "daredevil", "user36": "x23",
+    "user37": "quicksilver", "user38": "vision", "user39": "scarlet witch",
+    "user40": "mister fantastic", "user41": "invisible woman", "user42": "human torch",
+    "user43": "thing", "user44": "wolverine", "user45": "storm",
+    "user46": "cyclops", "user47": "beast", "user48": "nightcrawler",
+    "user49": "colossus", "user50": "gambit"
+}'
+```
+And then add an additional node, which automatically triggers data redistribution over the wire using gRPC:
+```json
+curl -XPOST localhost:8080/add-node
+```
+
+And in the other terminal tab, you can see all the operations being printed including some lines that detail the data migration request.
+
+### Removing nodes
+To remove a particular node, you can use the following curl command:
+```json
+curl -XPOST localhost:8080/remove-node/11004
+
+or more generally:
+curl -XPOST localhost:8080/remove-node/<node_address>
+```
+
+To exit the entire system, simply press `CTRL + C` on your keyboard.
+
+
 # Architecture
-Overview of the architecture, from the Memtable implemention, to how the data is stored on disk in the form of SSTables, and lastly how its distributed.
+Overview of the architecture, from the Memtable implementation, to how the data is stored on disk in the form of SSTables, and lastly how its distributed.
 
 ![LSM Architecture](extra/lsm.png)
 Source: “A Survey of LSM-Tree Based Indexes, Data Systems and KV-Stores.” arxiv.org/html/2402.10460v2.
@@ -69,7 +148,7 @@ genesis supports the following operations:
 
 Important to note is that genesis utilizes **tombstone-based garbage collection**. When deleting an existing key, it will simply append a tombstone value in the header and re-add it to the memtable (which will eventually get flushed to disk). The _actual_ deletion process occurs in the SSTable compaction algorithm.
 
-# Distributed Design
+# Distributed Architecture
 This key-value store is made to be distributed through the use of data partitioning and **sharding**. Each node of this system
 is a self-contained key value store (i.e., a shard), where each node holds a _subset_ of the overall data and is hosted on a separate port. Anytime a key value pair is inserted
 to the system by a client, it goes through a routing layer that utilizes [consistent hashing](https://en.wikipedia.org/wiki/Consistent_hashing) and is then routed to the correct node—thus
@@ -78,6 +157,8 @@ achieving **consistent** data partitioning.
 Genesis can support a multitude of concurrent nodes and utilizes [gRPC](https://grpc.io/) for inter-node communication, primarily in the case of
 **data rebalancing** (triggered when a node is added or removed). Each node is wrapped in a gRPC server to accept incoming requests, and gRPC clients are spawned (to set up traditional client-server comms) only when data migration is needed. 
 
+A high-level overview of the overall design:
+![genesis architecture](extra/genesis-architecture.png)
 
 # Benchmarks
 
