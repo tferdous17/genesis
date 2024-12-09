@@ -23,6 +23,8 @@ type Cluster interface {
 	Put(key string, value string) error
 	Get(key string) (string, error)
 	Delete(key string) error
+	AddNode()
+	RemoveNode(addr string)
 }
 
 type Service struct {
@@ -72,10 +74,36 @@ func (s *Service) Close() error {
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/key") {
 		s.handleKeyRequest(w, r)
-	} else {
-		fmt.Println("does not have /key prefix")
-		w.WriteHeader(http.StatusNotFound)
+		return
 	}
+
+	if strings.HasPrefix(r.URL.Path, "/add-node") && r.Method == "POST" {
+		s.cluster.AddNode()
+		return
+	}
+
+	if strings.HasPrefix(r.URL.Path, "/remove-node") {
+		s.handleNodeRemoval(w, r)
+		return
+	}
+
+	fmt.Println("prefix must be one of the following: /key, /add-node, /remove-node")
+	w.WriteHeader(http.StatusNotFound)
+}
+
+func (s *Service) handleNodeRemoval(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		io.WriteString(w, "err: must be POST method")
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) != 3 {
+		io.WriteString(w, "err: missing token")
+		return
+	}
+
+	s.cluster.RemoveNode(parts[2])
 }
 
 func (s *Service) handleKeyRequest(w http.ResponseWriter, r *http.Request) {
