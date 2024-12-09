@@ -38,7 +38,7 @@ the consistent hashing & routing layer. Instead any request must go through port
 ### Put, Get, Delete key-value pairs
 
 To Put, Get, or Delete key-value pairs, you can start genesis in the terminal and in another terminal tab, you can use `curl` in the following manner on `:8080/key`:
-```json
+```
 curl -XPOST localhost:8080/key -d '{"user1": "batman", "user2": "superman", "user3": "captain america"}'
 
 curl -XGET localhost:8080/key/user2
@@ -48,7 +48,7 @@ curl -XDELETE localhost:8080/key/user3
 ```
 
 On the other terminal tab, you will see print statements to confirm the operations:
-```json
+```
 key = user1	added @ node addr = :11004
 key = user2	added @ node addr = :11001
 key = user3	added @ node addr = :11003
@@ -79,7 +79,7 @@ curl -XPOST localhost:8080/key -d '{
 }'
 ```
 And then add an additional node, which automatically triggers data redistribution over the wire using gRPC:
-```json
+```
 curl -XPOST localhost:8080/add-node
 ```
 
@@ -87,7 +87,7 @@ And in the other terminal tab, you can see all the operations being printed incl
 
 ### Removing nodes
 To remove a particular node, you can use the following curl command:
-```json
+```
 curl -XPOST localhost:8080/remove-node/11004
 
 or more generally:
