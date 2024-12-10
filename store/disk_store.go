@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"genesis/proto"
@@ -14,7 +13,7 @@ import (
 type DiskStore struct {
 	mu                 sync.Mutex
 	memtable           *Memtable
-	writeAheadLog      *os.File
+	writeAheadLog      *writeAheadLog
 	bucketManager      *BucketManager
 	immutableMemtables []Memtable
 }
@@ -29,25 +28,25 @@ const (
 
 const FlushSizeThreshold = 1024 * 1024 * 256
 
-// NewDiskStore starts up a single-node store
-func NewDiskStore() (*DiskStore, error) {
-	ds := &DiskStore{memtable: NewMemtable(), bucketManager: InitBucketManager()}
-
-	logFile, err := os.OpenFile("../log/genesis_wal.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		return nil, err
-	}
-	ds.writeAheadLog = logFile
-
-	return ds, err
-}
-
-// NewDiskStoreDistributed starts up a cluster of N nodes
-func NewDiskStoreDistributed(numOfNodes int) *Cluster {
+// NewCluster starts up a cluster of N nodes (stores), internally calls the newStore method per node
+func NewCluster(numOfNodes uint32) *Cluster {
 	cluster := Cluster{}
 	cluster.initNodes(numOfNodes)
 
 	return &cluster
+}
+
+// newStore starts up a single-node KV store
+func newStore(nodeNum uint32) (*DiskStore, error) {
+	ds := &DiskStore{memtable: NewMemtable(), bucketManager: InitBucketManager()}
+
+	logFile, err := os.OpenFile(fmt.Sprintf("../log/genesis_wal-%d.log", nodeNum), os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, err
+	}
+	ds.writeAheadLog = &writeAheadLog{file: logFile}
+
+	return ds, err
 }
 
 func (ds *DiskStore) Put(key *string, value *string) error {
@@ -77,8 +76,7 @@ func (ds *DiskStore) Put(key *string, value *string) error {
 	record.Header.CheckSum = record.CalculateChecksum()
 
 	ds.memtable.Put(key, record)
-	// TODO: Batch WAL appends to improve performance, constant disk writes are too expensive
-	//ds.appendOperationToWAL(PUT, record)
+	ds.writeAheadLog.appendWALOperation(PUT, record)
 
 	// * Automatically flush when memtable reaches certain threshold
 	if ds.memtable.sizeInBytes >= FlushSizeThreshold {
@@ -100,8 +98,8 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
-	// log the get operation first
-	//ds.appendOperationToWAL(GET, &Record{Key: key})
+	//log the get operation first
+	ds.writeAheadLog.appendWALOperation(GET, &Record{Key: key})
 
 	// * Search memtable first, if not there -> search SSTables on disk
 	record, err := ds.memtable.Get(&key)
@@ -137,7 +135,7 @@ func (ds *DiskStore) Delete(key string) error {
 	deletionRecord.CalculateChecksum()
 
 	ds.memtable.Put(&key, &deletionRecord)
-	ds.appendOperationToWAL(DELETE, &deletionRecord)
+	ds.writeAheadLog.appendWALOperation(DELETE, &deletionRecord)
 
 	return nil
 }
@@ -177,22 +175,4 @@ func deepCopyMemtable(memtable *Memtable) *Memtable {
 func (ds *DiskStore) Close() bool {
 	//TODO implement me
 	return true
-}
-
-func (ds *DiskStore) appendOperationToWAL(op Operation, record *Record) error {
-	buf := new(bytes.Buffer)
-	// Store operation as only 1 byte (only WAL entries will have this extra byte)
-	buf.WriteByte(byte(op))
-
-	// encode the entire key, value entry
-	if encodeErr := record.EncodeKV(buf); encodeErr != nil {
-		return utils.ErrEncodingKVFailed
-	}
-
-	// store in WAL
-	if logErr := utils.WriteToFile(buf.Bytes(), ds.writeAheadLog); logErr != nil {
-		return logErr
-	}
-
-	return nil
 }

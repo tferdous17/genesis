@@ -32,14 +32,14 @@ type Cluster struct {
 var nodeCounter uint32 = 1
 var currentNodePort uint32 = 11000
 
-func (c *Cluster) initNodes(numOfNodes int) {
+func (c *Cluster) initNodes(numOfNodes uint32) {
 	c.nodes = make(map[string]*Node)
 	c.accumulator = &dataMigrationAccumulator{}
 
 	var nodeAddrs []string
 
-	for i := 0; i < numOfNodes; i++ {
-		store, _ := NewDiskStore()
+	for i := 0; i < int(numOfNodes); i++ {
+		store, _ := newStore(nodeCounter)
 		node := Node{
 			ID:    fmt.Sprintf("node-%d", nodeCounter),
 			Addr:  fmt.Sprintf(":%d", currentNodePort),
@@ -60,7 +60,7 @@ func (c *Cluster) initNodes(numOfNodes int) {
 
 func (c *Cluster) AddNode() {
 	fmt.Println("adding new node @ address", currentNodePort)
-	store, _ := NewDiskStore()
+	store, _ := newStore(nodeCounter)
 	node := Node{
 		ID:    fmt.Sprintf("node-%d", nodeCounter),
 		Addr:  fmt.Sprintf(":%d", currentNodePort),

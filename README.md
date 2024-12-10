@@ -23,11 +23,11 @@ Built purely for educational purposes.
 
 ### Quick Start
 
-Clone the repository and get started by running `go run main.go` in the terminal/command line.
+Clone the repository and get started by finding the `cmd/` folder & running `go run main.go` in the terminal/command line.
 
-By default, the store will open with **5** nodes (self-contained KV stores). You can modify this within the `main.go` file.
+By default, the system will open a cluster with **5** nodes (self-contained KV stores). You can modify this within the `main.go` file.
 ```go
-c := store.NewDiskStoreDistributed(5)
+c := store.NewCluster(5)
 c.Open()
 ```
 This will start an HTTP server on port `:8080`, which is what you can use to put, get, or delete keys.
