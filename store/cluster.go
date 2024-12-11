@@ -114,6 +114,13 @@ func (c *Cluster) Open() {
 	}
 }
 
+func (c *Cluster) Close() {
+	fmt.Println("Closing entire cluster..")
+	for _, node := range c.nodes {
+		node.server.GracefulStop()
+	}
+}
+
 func (c *Cluster) Put(key, value string) error {
 	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
 	fmt.Printf("key = %s\t", key)

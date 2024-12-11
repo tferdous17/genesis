@@ -25,6 +25,7 @@ type Cluster interface {
 	Delete(key string) error
 	AddNode()
 	RemoveNode(addr string)
+	Close()
 }
 
 type Service struct {
