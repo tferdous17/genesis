@@ -31,9 +31,12 @@ c := store.NewCluster(5)
 c.Open()
 ```
 This will start an HTTP server on port `:8080`, which is what you can use to put, get, or delete keys.
-As for the nodes themselves, they are hosted starting from port `:11000` to `:11004` in the case of 5 nodes. However,
-keep in mind that the nodes themselves at the aforementioned ports **do not** accept HTTP requests, as this would bypass
-the consistent hashing & routing layer. Instead any request must go through port `:8080`.
+As for the nodes themselves, they are hosted starting from port `:11000` to `:11004` in the case of 5 nodes.
+
+
+> [!NOTE]
+> Keep in mind that the nodes themselves at the aforementioned ports **do not** accept HTTP requests, as this would bypass
+the consistent hashing & routing layer. Instead, any request must go through port `:8080`.
 
 ### Put, Get, Delete key-value pairs
 
@@ -146,7 +149,8 @@ genesis supports the following operations:
 - Get(key)
 - Delete(key)
 
-Important to note is that genesis utilizes **tombstone-based garbage collection**. When deleting an existing key, it will simply append a tombstone value in the header and re-add it to the memtable (which will eventually get flushed to disk). The _actual_ deletion process occurs in the SSTable compaction algorithm.
+> [!NOTE]
+> Genesis utilizes **tombstone-based garbage collection**. When deleting an existing key, it will simply append a tombstone value in the header and re-add it to the memtable (which will eventually get flushed to disk). The _actual_ deletion process occurs in the SSTable compaction algorithm.
 
 # Distributed Architecture
 This key-value store is made to be distributed through the use of data partitioning and **sharding**. Each node of this system
