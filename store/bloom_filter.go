@@ -1,11 +1,12 @@
 package store
 
 import (
-	"genesis/utils"
-	"github.com/spaolacci/murmur3"
 	"hash"
 	"math"
 	"os"
+
+	"github.com/spaolacci/murmur3"
+	"github.com/tferdous17/genesis/utils"
 )
 
 type BloomFilter struct {

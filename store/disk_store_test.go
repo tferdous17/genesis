@@ -9,7 +9,7 @@ import (
 var epoch = 1_000
 
 func BenchmarkDiskStore_Put(b *testing.B) {
-	store, _ := NewDiskStore()
+	store, _ := newStore(1)
 	val := "val"
 	for i := 0; i < b.N; i++ {
 		key := generateRandomKey()
@@ -21,7 +21,7 @@ func BenchmarkDiskStore_Put(b *testing.B) {
 }
 
 func BenchmarkDiskStore_Get(b *testing.B) {
-	store, _ := NewDiskStore()
+	store, _ := newStore(1)
 	testK := "Foxtrot"
 	val := "val"
 	for i := 0; i < 1_000_000; i++ {

@@ -3,8 +3,9 @@ package store
 import (
 	"bytes"
 	"encoding/binary"
-	"genesis/utils"
 	"hash/crc32"
+
+	"github.com/tferdous17/genesis/utils"
 )
 
 /*

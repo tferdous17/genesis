@@ -2,8 +2,9 @@ package store
 
 import (
 	"fmt"
-	"genesis/utils"
+
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
+	"github.com/tferdous17/genesis/utils"
 )
 
 type Memtable struct {

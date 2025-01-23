@@ -3,17 +3,20 @@ package store
 import (
 	"context"
 	"fmt"
-	"genesis/http"
-	"genesis/proto"
-	"genesis/utils"
-	"github.com/serialx/hashring"
-	"google.golang.org/grpc"
 	"log"
 	"os"
 	"os/signal"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/tferdous17/genesis/utils"
+
+	"github.com/tferdous17/genesis/http"
+	"github.com/tferdous17/genesis/proto"
+
+	"github.com/serialx/hashring"
+	"google.golang.org/grpc"
 )
 
 type Node struct {

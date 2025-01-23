@@ -3,11 +3,12 @@ package http
 import (
 	"encoding/json"
 	"fmt"
-	"genesis/utils"
 	"io"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/tferdous17/genesis/utils"
 )
 
 type Store interface {

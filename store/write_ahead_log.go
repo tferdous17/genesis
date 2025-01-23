@@ -2,8 +2,9 @@ package store
 
 import (
 	"bytes"
-	"genesis/utils"
 	"os"
+
+	"github.com/tferdous17/genesis/utils"
 )
 
 const WALBatchThreshold = 1024 * 1024 * 3

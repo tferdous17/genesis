@@ -1,12 +1,13 @@
 package store
 
 import (
-	"genesis/proto"
+	"github.com/tferdous17/genesis/proto"
 
 	"fmt"
+	"log"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"log"
 )
 
 func StartGRPCClient(destNodeAddr string) (proto.DataMigrationServiceClient, *grpc.ClientConn) {

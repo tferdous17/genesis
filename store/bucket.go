@@ -5,10 +5,11 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
-	"genesis/utils"
 	"io"
 	"os"
 	"slices"
+
+	"github.com/tferdous17/genesis/utils"
 )
 
 type Bucket struct {

@@ -5,11 +5,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"genesis/utils"
 	"io"
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/tferdous17/genesis/utils"
 )
 
 const (
