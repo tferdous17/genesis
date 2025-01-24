@@ -23,7 +23,21 @@ Built purely for educational purposes.
 
 ### Quick Start
 
-Clone the repository and get started by finding the `cmd/` folder & running `go run main.go` in the terminal/command line.
+Clone the repository locally. 
+
+As a pre-equisite, you will need to generate the message types and grpc service code using protoc.
+
+You may need to install below dependencies to be able to run the command:
+- Ensure you have Go installed and it is configured. You can test using "go version"
+- protobuf (e.g. on Mac, you can use "brew install protobuf")
+- protoc-gen-go (e.g. go install google.golang.org/protobuf/cmd/protoc-gen-go@latest)
+- protoc-gen-go-grpc (e.g. go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest)
+
+
+To get started, you can run below target from the Makefile
+```
+make all
+```
 
 By default, the system will open a cluster with **5** nodes (self-contained KV stores). You can modify this within the `main.go` file.
 ```go

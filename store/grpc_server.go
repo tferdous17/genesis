@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"fmt"
-	"genesis/proto"
-	"google.golang.org/grpc"
 	"net"
+
+	"github.com/tferdous17/genesis/proto"
+	"google.golang.org/grpc"
 )
 
 type dataMigrationServer struct {

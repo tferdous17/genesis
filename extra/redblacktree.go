@@ -1,8 +1,8 @@
 package extra
 
 import (
-	"genesis/store"
-	"genesis/utils"
+	"github.com/tferdous17/genesis/store"
+	"github.com/tferdous17/genesis/utils"
 )
 
 /*

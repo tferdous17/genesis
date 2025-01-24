@@ -3,11 +3,13 @@ package store
 import (
 	"errors"
 	"fmt"
-	"genesis/proto"
-	"genesis/utils"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/tferdous17/genesis/utils"
+
+	"github.com/tferdous17/genesis/proto"
 )
 
 type DiskStore struct {
@@ -51,8 +53,15 @@ func newStore(nodeNum uint32) (*DiskStore, error) {
 
 func (ds *DiskStore) Put(key *string, value *string) error {
 	// lock access to the store so only 1 goroutine at a time can write to it, preventing race conditions
+	if ds == nil {
+		return fmt.Errorf("Disk store is not initialized")
+	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
+
+	if ds.memtable == nil {
+		return fmt.Errorf("memtable is not initialized")
+	}
 
 	err := utils.ValidateKV(key, value)
 	if err != nil {
@@ -95,6 +104,9 @@ func (ds *DiskStore) PutRecordFromGRPC(record *proto.Record) {
 }
 
 func (ds *DiskStore) Get(key string) (string, error) {
+	if ds == nil {
+		return "<!>", fmt.Errorf("Disk store is not initialized")
+	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
@@ -114,6 +126,9 @@ func (ds *DiskStore) Get(key string) (string, error) {
 }
 
 func (ds *DiskStore) Delete(key string) error {
+	if ds == nil {
+		return fmt.Errorf("Disk store is not initialized")
+	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 

@@ -1,7 +1,7 @@
 package store
 
 import (
-	"genesis/utils"
+	"github.com/tferdous17/genesis/utils"
 )
 
 type BucketManager struct {
