@@ -53,12 +53,25 @@ func (sst *SSTable) InitTableFiles(directory string) error {
 	}
 
 	// create data and index files
-	dataFile, _ := os.Create(getNextSstFilename(directory, sst.sstCounter) + DataFileExtension)
+	dataFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + DataFileExtension)
+
+	if err != nil {
+		return fmt.Errorf("failed to create data file: %w", err)
+	}
+
 	indexFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + IndexFileExtension)
+
+	if err != nil {
+		dataFile.Close() // Clean up previously created files
+		return fmt.Errorf("failed to create index file: %w", err)
+	}
+
 	bloomFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + BloomFileExtension)
 
 	if err != nil {
-		return utils.ErrFileInit
+		dataFile.Close() // Clean up previously created files
+		indexFile.Close()
+		return fmt.Errorf("failed to create bloom filter file: %w", err)
 	}
 
 	sst.dataFile, sst.indexFile = dataFile, indexFile
@@ -169,8 +182,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 		_, err := io.ReadFull(sst.dataFile, currEntry)
 		if errors.Is(err, io.EOF) {
 			eofErr = err
-			utils.Log("END OF FILE")
-			return "EOF", err
+			return "", err
 		}
 
 		h := &Header{}
@@ -196,11 +208,10 @@ func (sst *SSTable) Get(key string) (string, error) {
 			keyFound = true
 			return r.Value, nil
 		} else if r.Key > key {
-			utils.Log("SEARCH OVEREXTENSION, RETURNING AS KEY NOT FOUND")
 			// * return early
 			// * this works b/c since our data is sorted, if the curr key is > target key,
 			// * ..then the key is not in this table
-			return "<!>", utils.ErrKeyNotWithinTable
+			return "", utils.ErrKeyNotWithinTable
 		} else {
 			// * else, need to keep iterating & looking
 			currOffset += r.Header.KeySize + r.Header.ValueSize
@@ -209,7 +220,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 
 	}
 
-	return "<!>", utils.ErrKeyNotFound
+	return "", utils.ErrKeyNotFound
 }
 
 func (sst *SSTable) getCandidateByteOffsetIndex(targetKey string) int {

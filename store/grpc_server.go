@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
 
 	"github.com/tferdous17/genesis/proto"
@@ -51,7 +52,7 @@ func StartGRPCServer(addr string, node *Node) *grpc.Server {
 		fmt.Println("gRPC server started @ port ", addr)
 		err = server.Serve(ln)
 		if err != nil {
-			fmt.Println(err)
+			log.Fatalf("failed to start gRPC server: %v", err)
 		}
 	}()
 	return server
