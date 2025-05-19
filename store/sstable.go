@@ -35,15 +35,21 @@ type SSTable struct {
 }
 
 // InitSSTableOnDisk directory to store sstable, (sorted) entries to store in said table
-func InitSSTableOnDisk(directory string, entries *[]Record) *SSTable {
+func InitSSTableOnDisk(directory string, entries *[]Record) (*SSTable, error) {
 	atomic.AddUint32(&sstTableCounter, 1)
 	table := &SSTable{
 		sstCounter: sstTableCounter,
 	}
-	table.InitTableFiles(directory)
-	writeEntriesToSST(entries, table)
+	err := table.InitTableFiles(directory)
+	if err != nil {
+		return nil, err
+	}
+	err2 := writeEntriesToSST(entries, table)
+	if err2 != nil {
+		return nil, err
+	}
 
-	return table
+	return table, nil
 }
 
 func (sst *SSTable) InitTableFiles(directory string) error {
@@ -62,15 +68,24 @@ func (sst *SSTable) InitTableFiles(directory string) error {
 	indexFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + IndexFileExtension)
 
 	if err != nil {
-		dataFile.Close() // Clean up previously created files
+		err := dataFile.Close()
+		if err != nil {
+			return err
+		} // Clean up previously created files
 		return fmt.Errorf("failed to create index file: %w", err)
 	}
 
 	bloomFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + BloomFileExtension)
 
 	if err != nil {
-		dataFile.Close() // Clean up previously created files
-		indexFile.Close()
+		err := dataFile.Close()
+		if err != nil {
+			return err
+		} // Clean up previously created files
+		err2 := indexFile.Close()
+		if err2 != nil {
+			return err2
+		}
 		return fmt.Errorf("failed to create bloom filter file: %w", err)
 	}
 
@@ -90,7 +105,7 @@ type sparseIndex struct {
 	byteOffset uint32 // where to start reading from
 }
 
-func writeEntriesToSST(sortedEntries *[]Record, table *SSTable) {
+func writeEntriesToSST(sortedEntries *[]Record, table *SSTable) error {
 	buf := new(bytes.Buffer)
 	var byteOffsetCounter uint32
 
@@ -109,7 +124,10 @@ func writeEntriesToSST(sortedEntries *[]Record, table *SSTable) {
 			})
 		}
 		byteOffsetCounter += (*sortedEntries)[i].RecordSize
-		(*sortedEntries)[i].EncodeKV(buf)
+		err := (*sortedEntries)[i].EncodeKV(buf)
+		if err != nil {
+			return err
+		}
 	}
 
 	// after encoding all entries, dump into the SSTable
@@ -118,30 +136,46 @@ func writeEntriesToSST(sortedEntries *[]Record, table *SSTable) {
 	}
 	// * Set up sparse index
 	utils.Logf("SPARSE KEYS: %v", table.sparseKeys)
-	populateSparseIndexFile(&table.sparseKeys, table.indexFile)
+	err := populateSparseIndexFile(&table.sparseKeys, table.indexFile)
+	if err != nil {
+		return err
+	}
 
 	// * Set up + populate bloom filter
 	table.bloomFilter.InitBloomFilterAttrs(uint32(len(*sortedEntries)))
 	populateBloomFilter(sortedEntries, table.bloomFilter)
+
+	return nil
 }
 
-func populateSparseIndexFile(indices *[]sparseIndex, indexFile *os.File) {
+func populateSparseIndexFile(indices *[]sparseIndex, indexFile *os.File) error {
 	// encode and write to index file
 	buf := new(bytes.Buffer)
 	for i := range *indices {
-		binary.Write(buf, binary.LittleEndian, (*indices)[i].keySize)
+		err := binary.Write(buf, binary.LittleEndian, (*indices)[i].keySize)
+		if err != nil {
+			return err
+		}
 		buf.WriteString((*indices)[i].key)
-		binary.Write(buf, binary.LittleEndian, (*indices)[i].byteOffset)
+		err2 := binary.Write(buf, binary.LittleEndian, (*indices)[i].byteOffset)
+		if err2 != nil {
+			return err2
+		}
 	}
 
 	if err := utils.WriteToFile(buf.Bytes(), indexFile); err != nil {
 		fmt.Println("write to indexfile err:", err)
 	}
+	return nil
+
 }
 
 func populateBloomFilter(entries *[]Record, bloomFilter *BloomFilter) {
 	for i := range *entries {
-		bloomFilter.Add((*entries)[i].Key)
+		err := bloomFilter.Add((*entries)[i].Key)
+		if err != nil {
+			return
+		}
 	}
 
 	bfBytes := make([]byte, bloomFilter.bitSetSize)
@@ -176,36 +210,45 @@ func (sst *SSTable) Get(key string) (string, error) {
 	var keyFound = false
 	var eofErr error
 
-	for keyFound == false || eofErr == nil {
+	for !keyFound || eofErr == nil {
 		// * set up entry for the header
 		currEntry := make([]byte, 17)
 		_, err := io.ReadFull(sst.dataFile, currEntry)
 		if errors.Is(err, io.EOF) {
-			eofErr = err
+			//eofErr = err
 			return "", err
 		}
 
 		h := &Header{}
-		h.DecodeHeader(currEntry)
+		err2 := h.DecodeHeader(currEntry)
+		if err2 != nil {
+			return "", err2
+		}
 
 		// * move the cursor so we can read the rest of the record
 		currOffset += headerSize // can do this since headerSize is constant
-		sst.dataFile.Seek(int64(currOffset), 0)
+		_, err3 := sst.dataFile.Seek(int64(currOffset), 0)
+		if err3 != nil {
+			return "", err3
+		}
 		// * set up []byte for the rest of the record
 		currRecord := make([]byte, h.KeySize+h.ValueSize)
-		if _, err := io.ReadFull(sst.dataFile, currRecord); err != nil {
-			fmt.Println("READFULL ERR:", err)
-			return "", err
+		if _, err2 := io.ReadFull(sst.dataFile, currRecord); err2 != nil {
+			fmt.Println("READFULL ERR:", err2)
+			return "", err2
 		}
 		// * append both []byte together in order to decode as a whole
 		currEntry = append(currEntry, currRecord...) // full size of the record
 		r := &Record{}
-		r.DecodeKV(currEntry)
+		err4 := r.DecodeKV(currEntry)
+		if err4 != nil {
+			return "", err4
+		}
 		//utils.Logf("LOOKING AT RECORD: %v", r)
 
 		if r.Key == key {
 			utils.LogGREEN("FOUND KEY %s -> VALUE %s\n", key, r.Value)
-			keyFound = true
+			//keyFound = true
 			return r.Value, nil
 		} else if r.Key > key {
 			// * return early
@@ -215,7 +258,10 @@ func (sst *SSTable) Get(key string) (string, error) {
 		} else {
 			// * else, need to keep iterating & looking
 			currOffset += r.Header.KeySize + r.Header.ValueSize
-			sst.dataFile.Seek(int64(currOffset), 0)
+			_, err2 := sst.dataFile.Seek(int64(currOffset), 0)
+			if err2 != nil {
+				return "", err2
+			}
 		}
 
 	}

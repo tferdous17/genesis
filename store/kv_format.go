@@ -59,11 +59,22 @@ func NewHeader(buf []byte) (*Header, error) {
 
 func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 	err := binary.Write(buf, binary.LittleEndian, &h.CheckSum)
-	binary.Write(buf, binary.LittleEndian, &h.Tombstone)
-	binary.Write(buf, binary.LittleEndian, &h.TimeStamp)
-	binary.Write(buf, binary.LittleEndian, &h.KeySize)
-	binary.Write(buf, binary.LittleEndian, &h.ValueSize)
-
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	err = binary.Write(buf, binary.LittleEndian, &h.Tombstone)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	err = binary.Write(buf, binary.LittleEndian, &h.TimeStamp)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	err = binary.Write(buf, binary.LittleEndian, &h.KeySize)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	err = binary.Write(buf, binary.LittleEndian, &h.ValueSize)
 	if err != nil {
 		return utils.ErrEncodingHeaderFailed
 	}
@@ -74,16 +85,27 @@ func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
 func (h *Header) DecodeHeader(buf []byte) error {
 	// must pass in reference b/c go is call by value and won't modify original otherwise
 	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.CheckSum)
-	binary.Decode(buf[4:5], binary.LittleEndian, &h.Tombstone)
-	binary.Decode(buf[5:9], binary.LittleEndian, &h.TimeStamp)
-	binary.Decode(buf[9:13], binary.LittleEndian, &h.KeySize)
-	binary.Decode(buf[13:17], binary.LittleEndian, &h.ValueSize)
-
 	if err != nil {
-		return utils.ErrDecodingHeaderFailed
+		return utils.ErrEncodingHeaderFailed
+	}
+	_, err = binary.Decode(buf[4:5], binary.LittleEndian, &h.Tombstone)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	_, err = binary.Decode(buf[5:9], binary.LittleEndian, &h.TimeStamp)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	_, err = binary.Decode(buf[9:13], binary.LittleEndian, &h.KeySize)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
+	}
+	_, err = binary.Decode(buf[13:17], binary.LittleEndian, &h.ValueSize)
+	if err != nil {
+		return utils.ErrEncodingHeaderFailed
 	}
 
-	return nil
+	return err
 }
 
 func (h *Header) MarkTombstone() {
@@ -92,9 +114,12 @@ func (h *Header) MarkTombstone() {
 
 func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 	// write the KV data into the buffer
-	r.Header.EncodeHeader(buf)
+	err := r.Header.EncodeHeader(buf)
+	if err != nil {
+		return err
+	}
 	buf.WriteString(r.Key)
-	_, err := buf.WriteString(r.Value)
+	_, err = buf.WriteString(r.Value)
 	return err
 }
 
@@ -110,18 +135,30 @@ func (r *Record) Size() uint32 {
 	return r.RecordSize
 }
 
-func (r *Record) CalculateChecksum() uint32 {
+func (r *Record) CalculateChecksum() (uint32, error) {
 	// Compute checksum for entire record, used for data integrity purposes
 	headerBuf := new(bytes.Buffer)
-	binary.Write(headerBuf, binary.LittleEndian, &r.Header.Tombstone)
-	binary.Write(headerBuf, binary.LittleEndian, &r.Header.TimeStamp)
-	binary.Write(headerBuf, binary.LittleEndian, &r.Header.KeySize)
-	binary.Write(headerBuf, binary.LittleEndian, &r.Header.ValueSize)
+	err := binary.Write(headerBuf, binary.LittleEndian, &r.Header.Tombstone)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(headerBuf, binary.LittleEndian, &r.Header.TimeStamp)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(headerBuf, binary.LittleEndian, &r.Header.KeySize)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(headerBuf, binary.LittleEndian, &r.Header.ValueSize)
+	if err != nil {
+		return 0, err
+	}
 
 	// cant append a []byte directly into a []byte, so destructure the val into individual bytes
 	kvBuf := append([]byte(r.Key), []byte(r.Value)...)
 
 	buf := append(headerBuf.Bytes(), kvBuf...)
 
-	return crc32.ChecksumIEEE(buf)
+	return crc32.ChecksumIEEE(buf), nil
 }

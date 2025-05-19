@@ -1,9 +1,10 @@
 package utils
 
 import (
-	"github.com/fatih/color"
 	logger "log"
 	"reflect"
+
+	"github.com/fatih/color"
 )
 
 func Log(msg string) {

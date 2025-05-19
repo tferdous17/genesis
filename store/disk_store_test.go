@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var epoch = 1_000
+//var epoch = 1_000
 
 func BenchmarkDiskStore_Put(b *testing.B) {
 	store, _ := newStore(1)
@@ -48,12 +48,12 @@ func generateRandomKey() string {
 
 // generateRandomString generates a random string of a given length
 func generateRandomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	chars := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
 	b := make([]rune, length)
 	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
+		b[i] = chars[rng.Intn(len(chars))]
 
 	}
 	return string(b)

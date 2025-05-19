@@ -87,7 +87,7 @@ func (b *Bucket) NeedsCompaction(minNumTables, maxNumTables int) bool {
 	return len(b.tables) >= minNumTables && len(b.tables) <= maxNumTables
 }
 
-func (b *Bucket) TriggerCompaction() *SSTable {
+func (b *Bucket) TriggerCompaction() (*SSTable, error) {
 	utils.LogGREEN("STARTING COMPACTION WITH LENGTH %d", len(b.tables))
 
 	var allSortedRuns [][]Record
@@ -98,7 +98,10 @@ func (b *Bucket) TriggerCompaction() *SSTable {
 
 		// Set seek 0 to for every table otherwise the seek position will be at the end of each file by default
 		// I assume because of previous reading done on said files?
-		b.tables[i].dataFile.Seek(int64(currOffset), 0)
+		_, err := b.tables[i].dataFile.Seek(int64(currOffset), 0)
+		if err != nil {
+			return nil, err
+		}
 		for {
 			currEntry := make([]byte, headerSize)
 			_, err := io.ReadFull(b.tables[i].dataFile, currEntry)
@@ -108,11 +111,17 @@ func (b *Bucket) TriggerCompaction() *SSTable {
 			}
 
 			h := &Header{}
-			h.DecodeHeader(currEntry)
+			err = h.DecodeHeader(currEntry)
+			if err != nil {
+				return nil, err
+			}
 
 			// * move the cursor so we can read the rest of the record
 			currOffset += headerSize // can do this since headerSize is constant
-			b.tables[i].dataFile.Seek(int64(currOffset), 0)
+			_, err = b.tables[i].dataFile.Seek(int64(currOffset), 0)
+			if err != nil {
+				return nil, err
+			}
 			// * set up []byte for the rest of the record
 			currRecord := make([]byte, h.KeySize+h.ValueSize)
 			if _, err := io.ReadFull(b.tables[i].dataFile, currRecord); err != nil {
@@ -122,12 +131,18 @@ func (b *Bucket) TriggerCompaction() *SSTable {
 			// * append both []byte together in order to decode as a whole
 			currEntry = append(currEntry, currRecord...) // full size of the record
 			r := &Record{}
-			r.DecodeKV(currEntry)
+			err = r.DecodeKV(currEntry)
+			if err != nil {
+				return nil, err
+			}
 
 			currSortedRun = append(currSortedRun, *r)
 
 			currOffset += r.Header.KeySize + r.Header.ValueSize
-			b.tables[i].dataFile.Seek(int64(currOffset), 0)
+			_, err = b.tables[i].dataFile.Seek(int64(currOffset), 0)
+			if err != nil {
+				return nil, err
+			}
 		}
 		allSortedRuns = append(allSortedRuns, currSortedRun)
 	}
@@ -152,12 +167,18 @@ func (b *Bucket) TriggerCompaction() *SSTable {
 	removeOutdatedEntires(&finalSortedRun)
 
 	// once the new merged table gets created, we add it to a new bucket
-	mergedSSTable := InitSSTableOnDisk("storage", &finalSortedRun)
+	mergedSSTable, err := InitSSTableOnDisk("storage", &finalSortedRun)
+	if err != nil {
+		return nil, err
+	}
 
 	// ! now we need to delete the old sstables from disk to free up space
-	deleteOldSSTables(&b.tables)
+	err = deleteOldSSTables(&b.tables)
+	if err != nil {
+		return nil, err
+	}
 
-	return mergedSSTable
+	return mergedSSTable, nil
 }
 
 func filterAndDeleteTombstones(sortedRun *[]Record) {

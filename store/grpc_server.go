@@ -6,8 +6,9 @@ import (
 	"log"
 	"net"
 
-	"github.com/tferdous17/genesis/proto"
 	"google.golang.org/grpc"
+
+	"github.com/tferdous17/genesis/proto"
 )
 
 type dataMigrationServer struct {
