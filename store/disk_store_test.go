@@ -13,7 +13,10 @@ func BenchmarkDiskStore_Put(b *testing.B) {
 	val := "val"
 	for i := 0; i < b.N; i++ {
 		key := generateRandomKey()
-		store.Put(&key, &val)
+		err := store.Put(&key, &val)
+		if err != nil {
+			return
+		}
 	}
 
 	opsPerSec := float64(b.N) / b.Elapsed().Seconds()
@@ -26,17 +29,26 @@ func BenchmarkDiskStore_Get(b *testing.B) {
 	val := "val"
 	for i := 0; i < 1_000_000; i++ {
 		if i == 4313 {
-			store.Put(&testK, &val)
+			err := store.Put(&testK, &val)
+			if err != nil {
+				return
+			}
 		} else {
 			key := generateRandomKey()
-			store.Put(&key, &val)
+			err := store.Put(&key, &val)
+			if err != nil {
+				return
+			}
 		}
 	}
 	store.FlushMemtable()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		store.Get("Foxtrot")
+		_, err := store.Get("Foxtrot")
+		if err != nil {
+			return
+		}
 	}
 	opsPerSec := float64(b.N) / b.Elapsed().Seconds()
 	b.ReportMetric(opsPerSec, "ops/s")

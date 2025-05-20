@@ -49,3 +49,4 @@ fabric.properties
 .idea/
 .vscode/
 # End of https://www.toptal.com/developers/gitignore/api/go,webstorm
+*.swp

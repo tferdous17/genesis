@@ -1,25 +1,10 @@
+version: "2"
+
 linters:
   enable:
     - errcheck
-    - gofmt
-    - goimports
-    - gosimple
     - govet
     - ineffassign
     - misspell
     - staticcheck
-    - typecheck
     - unused
-  exclusions:
-    paths:
-      - store/disk_store_test.go
-      - store/memtable_test.go
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/tferdous17/genesis
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
