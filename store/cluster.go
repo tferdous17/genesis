@@ -99,22 +99,25 @@ var defaultPort = ":8080"
 
 func (c *Cluster) Open() {
 	clusterService := http.NewClusterService(defaultPort, c)
-	clusterService.Start()
+	err := clusterService.Start()
+	if err != nil {
+		return
+	}
 
 	fmt.Println("HTTP server started successfully @ port", defaultPort)
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
 
 	// Block until one of the signals above is received
-	select {
-	case <-signalCh:
-		c.PrintDiagnostics()
-		log.Println("signal received, shutting down...")
-		err := clusterService.Close()
-		if err != nil {
-			fmt.Println(err)
-		}
+
+	<-signalCh
+	c.PrintDiagnostics()
+	log.Println("signal received, shutting down...")
+	err = clusterService.Close()
+	if err != nil {
+		fmt.Println(err)
 	}
+
 }
 
 func (c *Cluster) Close() {
@@ -165,7 +168,7 @@ func (c *Cluster) Delete(key string) error {
 func (c *Cluster) PrintDiagnostics() {
 	fmt.Println("DIAGNOSTICS:")
 	for _, v := range c.nodes {
-		fmt.Printf(v.ID + " @ address " + v.Addr + " , num keys: ")
+		fmt.Printf("%s", v.ID+" @ address "+v.Addr+" , num keys: ")
 		v.Store.LengthOfMemtable()
 	}
 }
@@ -225,7 +228,12 @@ func (c *Cluster) rebalance() {
 
 func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAddr string, data *[]Record) {
 	client, conn := StartGRPCClient(destNodeServerAddr)
-	defer conn.Close()
+	defer func(conn *grpc.ClientConn) {
+		err := conn.Close()
+		if err != nil {
+			return
+		}
+	}(conn)
 
 	kvPairs := convertRecordsToProtoKVPairs(data)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -244,7 +252,7 @@ func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAdd
 
 func (c *Cluster) getAllNodeAddrs() []string {
 	var addrs []string
-	for addr, _ := range c.nodes {
+	for addr := range c.nodes {
 		addrs = append(addrs, addr)
 	}
 	return addrs

@@ -40,7 +40,10 @@ func BenchmarkMemtable_Get(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < 1_000_000; i++ {
-		memtable.Get(&testKey)
+		_, err := memtable.Get(&testKey)
+		if err != nil {
+			return
+		}
 
 	}
 

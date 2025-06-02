@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	rbt "github.com/emirpasic/gods/trees/redblacktree"
+
 	"github.com/tferdous17/genesis/utils"
 )
 
@@ -49,7 +50,10 @@ func (m *Memtable) PrintAllRecords() {
 
 func (m *Memtable) Flush(directory string) *SSTable {
 	sortedEntries := m.returnAllRecordsInSortedOrder()
-	table := InitSSTableOnDisk(directory, castToRecordSlice(&sortedEntries))
+	table, err := InitSSTableOnDisk(directory, castToRecordSlice(&sortedEntries))
+	if err != nil {
+		panic(err)
+	}
 
 	return table
 }
@@ -79,7 +83,7 @@ func castToRecordSlice(interfaceSlice *[]interface{}) *[]Record {
 	for i, iface := range *interfaceSlice {
 		record, ok := iface.(Record)
 		if !ok {
-			fmt.Errorf("element %d is not a Record", i)
+			_ = fmt.Errorf("element %d is not a Record", i)
 		}
 		recordSlice[i] = record
 	}

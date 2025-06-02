@@ -54,7 +54,7 @@ func newStore(nodeNum uint32) (*DiskStore, error) {
 func (ds *DiskStore) Put(key *string, value *string) error {
 	// lock access to the store so only 1 goroutine at a time can write to it, preventing race conditions
 	if ds == nil {
-		return fmt.Errorf("Disk store is not initialized")
+		return fmt.Errorf("disk store is not initialized")
 	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -82,10 +82,16 @@ func (ds *DiskStore) Put(key *string, value *string) error {
 		Value:      *value,
 		RecordSize: headerSize + header.KeySize + header.ValueSize,
 	}
-	record.Header.CheckSum = record.CalculateChecksum()
+	record.Header.CheckSum, err = record.CalculateChecksum()
+	if err != nil {
+		return err
+	}
 
 	ds.memtable.Put(key, record)
-	ds.writeAheadLog.appendWALOperation(PUT, record)
+	err = ds.writeAheadLog.appendWALOperation(PUT, record)
+	if err != nil {
+		return err
+	}
 
 	// * Automatically flush when memtable reaches certain threshold
 	if ds.memtable.sizeInBytes >= FlushSizeThreshold {
@@ -105,13 +111,16 @@ func (ds *DiskStore) PutRecordFromGRPC(record *proto.Record) {
 
 func (ds *DiskStore) Get(key string) (string, error) {
 	if ds == nil {
-		return "<!>", fmt.Errorf("Disk store is not initialized")
+		return "<!>", fmt.Errorf("disk store is not initialized")
 	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
 	//log the get operation first
-	ds.writeAheadLog.appendWALOperation(GET, &Record{Key: key})
+	err := ds.writeAheadLog.appendWALOperation(GET, &Record{Key: key})
+	if err != nil {
+		return "", err
+	}
 
 	// * Search memtable first, if not there -> search SSTables on disk
 	record, err := ds.memtable.Get(&key)
@@ -127,7 +136,7 @@ func (ds *DiskStore) Get(key string) (string, error) {
 
 func (ds *DiskStore) Delete(key string) error {
 	if ds == nil {
-		return fmt.Errorf("Disk store is not initialized")
+		return fmt.Errorf("disk store is not initialized")
 	}
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
@@ -147,10 +156,16 @@ func (ds *DiskStore) Delete(key string) error {
 		Value:      value,
 		RecordSize: headerSize + header.KeySize + header.ValueSize,
 	}
-	deletionRecord.CalculateChecksum()
+	_, err := deletionRecord.CalculateChecksum()
+	if err != nil {
+		return err
+	}
 
 	ds.memtable.Put(&key, &deletionRecord)
-	ds.writeAheadLog.appendWALOperation(DELETE, &deletionRecord)
+	err = ds.writeAheadLog.appendWALOperation(DELETE, &deletionRecord)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -162,7 +177,10 @@ func (ds *DiskStore) LengthOfMemtable() {
 func (ds *DiskStore) FlushMemtable() {
 	for i := range ds.immutableMemtables {
 		sstable := ds.immutableMemtables[i].Flush("storage")
-		ds.bucketManager.InsertTable(sstable)
+		err := ds.bucketManager.InsertTable(sstable)
+		if err != nil {
+			return
+		}
 		ds.immutableMemtables = ds.immutableMemtables[:i] // basically removing a "queued" memtable since its flushed
 	}
 }

@@ -24,7 +24,7 @@ func InitBucketManager() *BucketManager {
 	return manager
 }
 
-func (bm *BucketManager) InsertTable(table *SSTable) {
+func (bm *BucketManager) InsertTable(table *SSTable) error {
 	var levelToAppend = 1
 
 	for currLvl := bm.highestLvl; currLvl > 0; currLvl-- {
@@ -48,10 +48,14 @@ func (bm *BucketManager) InsertTable(table *SSTable) {
 	}
 
 	if bm.shouldCompact(levelToAppend) {
-		bm.compact(levelToAppend)
+		err := bm.compact(levelToAppend)
+		if err != nil {
+			return err
+		}
 	}
 
 	bm.DebugBM()
+	return nil
 }
 
 func (bm *BucketManager) RetrieveKey(key *string) (string, error) {
@@ -71,13 +75,18 @@ func (bm *BucketManager) DebugBM() {
 	}
 }
 
-func (bm *BucketManager) compact(level int) {
+func (bm *BucketManager) compact(level int) error {
 	bkt := bm.buckets[level]
-	mergedTable := bkt.TriggerCompaction() // ONLY triggers if threshold is reached in the bucket
+	mergedTable, err := bkt.TriggerCompaction() // ONLY triggers if threshold is reached in the bucket
 
 	if mergedTable != nil {
-		bm.InsertTable(mergedTable)
+		err := bm.InsertTable(mergedTable)
+		if err != nil {
+			return err
+		}
 	}
+
+	return err
 }
 
 func (bm *BucketManager) shouldCompact(level int) bool {

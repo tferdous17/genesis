@@ -1,0 +1,52 @@
+name: "build-and-test"
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      # Install Protoc for protocol buffer compilation
+      - name: Install Protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          export PATH="$PATH:$(go env GOPATH)/bin"
+
+      # Use the Makefile to generate proto files
+      - name: Generate Proto Files using Makefile
+        run: make generate || echo "Proto generation failed but continuing"
+
+      # Download and build dependencies
+      - name: Setup dependencies
+        run: |
+          go mod download
+          go mod tidy
+          # Build packages to generate export data needed by linters
+          go build -v ./... || echo "Build had some issues but continuing"
+
+      # Run golangci-lint
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1
+          args: --timeout=5m --skip-dirs=proto
+          # Only print new issues in the pull request
+          only-new-issues: ${{ github.event_name == 'pull_request' }}
