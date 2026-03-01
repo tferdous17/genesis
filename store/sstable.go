@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -193,7 +194,7 @@ func populateBloomFilter(entries *[]Record, bloomFilter *BloomFilter) {
 
 func (sst *SSTable) Get(key string) (string, error) {
 	if key < sst.minKey || key > sst.maxKey {
-		return "<!>", utils.ErrKeyNotWithinTable
+		return "", utils.ErrKeyNotWithinTable
 	}
 
 	if !sst.bloomFilter.MightContain(key) {
@@ -201,74 +202,56 @@ func (sst *SSTable) Get(key string) (string, error) {
 		return "", utils.ErrKeyNotWithinTable
 	}
 
-	// * Get sparse index and move to offset
-	currOffset := sst.sparseKeys[sst.getCandidateByteOffsetIndex(key)].byteOffset
-	if _, err := sst.dataFile.Seek(int64(currOffset), 0); err != nil {
-		return "", err
+	// * Seek to the best candidate offset from the sparse index
+	startOffset := int64(sst.sparseKeys[sst.getCandidateByteOffsetIndex(key)].byteOffset)
+	if _, err := sst.dataFile.Seek(startOffset, io.SeekStart); err != nil {
+		return "", fmt.Errorf("seek to sparse index offset: %w", err)
 	}
-	// * start loop
-	var keyFound = false
-	var eofErr error
 
-	for !keyFound || eofErr == nil {
-		// * set up entry for the header
-		currEntry := make([]byte, 17)
-		_, err := io.ReadFull(sst.dataFile, currEntry)
-		if errors.Is(err, io.EOF) {
-			//eofErr = err
-			return "", err
+	// Use a buffered reader from the seek point to avoid syscalls per read due to io.ReadFull on the raw *os.File
+	reader := bufio.NewReader(sst.dataFile)
+
+	headerBuf := make([]byte, 17)
+	for {
+		// Read header
+		_, err := io.ReadFull(reader, headerBuf)
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return "", utils.ErrKeyNotFound
+			}
+			return "", fmt.Errorf("read header: %w", err)
 		}
 
 		h := &Header{}
-		err2 := h.DecodeHeader(currEntry)
-		if err2 != nil {
-			return "", err2
+		if err := h.DecodeHeader(headerBuf); err != nil {
+			return "", fmt.Errorf("decode header: %w", err)
 		}
 
-		// * move the cursor so we can read the rest of the record
-		currOffset += headerSize // can do this since headerSize is constant
-		_, err3 := sst.dataFile.Seek(int64(currOffset), 0)
-		if err3 != nil {
-			return "", err3
+		// Read in the key-value after the header (cursor naturally moves)
+		kvBuf := make([]byte, h.KeySize+h.ValueSize)
+		if _, err := io.ReadFull(reader, kvBuf); err != nil {
+			return "", fmt.Errorf("read key-value: %w", err)
 		}
-		// * set up []byte for the rest of the record
-		currRecord := make([]byte, h.KeySize+h.ValueSize)
-		if _, err2 := io.ReadFull(sst.dataFile, currRecord); err2 != nil {
-			fmt.Println("READFULL ERR:", err2)
-			return "", err2
-		}
-		// * append both []byte together in order to decode as a whole
-		currEntry = append(currEntry, currRecord...) // full size of the record
+
+		// Append the header and kv together in order to decode as a whole
 		r := &Record{}
-		err4 := r.DecodeKV(currEntry)
-		if err4 != nil {
-			return "", err4
+		if err := r.DecodeKV(append(headerBuf, kvBuf...)); err != nil {
+			return "", fmt.Errorf("decode record: %w", err)
 		}
-		//utils.Logf("LOOKING AT RECORD: %v", r)
 
 		if r.Key == key {
 			utils.LogGREEN("FOUND KEY %s -> VALUE %s\n", key, r.Value)
-			//keyFound = true
 			return r.Value, nil
 		} else if r.Key > key {
 			// * return early
 			// * this works b/c since our data is sorted, if the curr key is > target key,
 			// * ..then the key is not in this table
 			return "", utils.ErrKeyNotWithinTable
-		} else {
-			// * else, need to keep iterating & looking
-			currOffset += r.Header.KeySize + r.Header.ValueSize
-			_, err2 := sst.dataFile.Seek(int64(currOffset), 0)
-			if err2 != nil {
-				return "", err2
-			}
-		}
-
+		} // else continue the loop if r.Key < key.
 	}
-
-	return "", utils.ErrKeyNotFound
 }
 
+// Looks through the sparse indexes and determines which byte offset to start from when scanning the SSTable
 func (sst *SSTable) getCandidateByteOffsetIndex(targetKey string) int {
 	low := 0
 	high := len(sst.sparseKeys) - 1
