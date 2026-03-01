@@ -78,7 +78,7 @@ func (m *Memtable) clear() {
 	m.sizeInBytes = 0
 }
 
-func castToRecordSlice(interfaceSlice *[]interface{}) *[]Record {
+func castToRecordSlice(interfaceSlice *[]interface{}) []Record {
 	recordSlice := make([]Record, len(*interfaceSlice))
 	for i, iface := range *interfaceSlice {
 		record, ok := iface.(Record)
@@ -87,5 +87,5 @@ func castToRecordSlice(interfaceSlice *[]interface{}) *[]Record {
 		}
 		recordSlice[i] = record
 	}
-	return &recordSlice
+	return recordSlice
 }

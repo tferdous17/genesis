@@ -167,7 +167,7 @@ func (b *Bucket) TriggerCompaction() (*SSTable, error) {
 	removeOutdatedEntires(&finalSortedRun)
 
 	// once the new merged table gets created, we add it to a new bucket
-	mergedSSTable, err := InitSSTableOnDisk("storage", &finalSortedRun)
+	mergedSSTable, err := InitSSTableOnDisk("storage", finalSortedRun)
 	if err != nil {
 		return nil, err
 	}
