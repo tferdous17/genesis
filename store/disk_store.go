@@ -39,10 +39,10 @@ func NewCluster(numOfNodes uint32) *Cluster {
 }
 
 // newStore starts up a single-node KV store
-func newStore(nodeNum uint32) (*DiskStore, error) {
-	ds := &DiskStore{memtable: NewMemtable(), bucketManager: InitBucketManager()}
+func newStore(nodeId string) (*DiskStore, error) {
+	ds := &DiskStore{memtable: NewMemtable(nodeId), bucketManager: InitBucketManager()}
 
-	logFile, err := os.OpenFile(fmt.Sprintf("../log/genesis_wal-%d.log", nodeNum), os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	logFile, err := os.OpenFile(fmt.Sprintf("../log/genesis_wal-%d.log", nodeId), os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (ds *DiskStore) DebugMemtable() {
 }
 
 func deepCopyMemtable(memtable *Memtable) *Memtable {
-	deepCopy := NewMemtable()
+	deepCopy := NewMemtable(memtable.nodeId)
 	deepCopy.sizeInBytes = memtable.sizeInBytes
 
 	// copy the tree data

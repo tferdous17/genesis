@@ -9,12 +9,14 @@ import (
 )
 
 type Memtable struct {
+	nodeId      string
 	data        *rbt.Tree
 	sizeInBytes uint32
 }
 
-func NewMemtable() *Memtable {
+func NewMemtable(nodeId string) *Memtable {
 	return &Memtable{
+		nodeId,
 		rbt.NewWithStringComparator(),
 		0,
 	}
@@ -50,7 +52,7 @@ func (m *Memtable) PrintAllRecords() {
 
 func (m *Memtable) Flush(directory string) *SSTable {
 	sortedEntries := m.returnAllRecordsInSortedOrder()
-	table, err := InitSSTableOnDisk(directory, castToRecordSlice(&sortedEntries))
+	table, err := InitSSTableOnDisk(m.nodeId, directory, castToRecordSlice(&sortedEntries))
 	if err != nil {
 		panic(err)
 	}

@@ -25,6 +25,7 @@ const (
 var sstTableCounter uint32
 
 type SSTable struct {
+	nodeId      string
 	dataFile    *os.File
 	indexFile   *os.File
 	bloomFilter *BloomFilter
@@ -36,9 +37,10 @@ type SSTable struct {
 }
 
 // InitSSTableOnDisk directory to store sstable, (sorted) entries to store in said table
-func InitSSTableOnDisk(directory string, entries []Record) (*SSTable, error) {
+func InitSSTableOnDisk(nodeId string, directory string, entries []Record) (*SSTable, error) {
 	atomic.AddUint32(&sstTableCounter, 1)
 	table := &SSTable{
+		nodeId:     nodeId,
 		sstCounter: sstTableCounter,
 	}
 	err := table.InitTableFiles(directory)
@@ -60,12 +62,12 @@ func (sst *SSTable) InitTableFiles(directory string) error {
 	}
 
 	// create data and index files
-	dataFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + DataFileExtension)
+	dataFile, err := os.Create(getNextSstFilename(sst.nodeId, directory, sst.sstCounter) + DataFileExtension)
 	if err != nil {
 		return fmt.Errorf("failed to create data file: %w", err)
 	}
 
-	indexFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + IndexFileExtension)
+	indexFile, err := os.Create(getNextSstFilename(sst.nodeId, directory, sst.sstCounter) + IndexFileExtension)
 	if err != nil {
 		return errors.Join(
 			dataFile.Close(),
@@ -73,7 +75,7 @@ func (sst *SSTable) InitTableFiles(directory string) error {
 		)
 	}
 
-	bloomFile, err := os.Create(getNextSstFilename(directory, sst.sstCounter) + BloomFileExtension)
+	bloomFile, err := os.Create(getNextSstFilename(sst.nodeId, directory, sst.sstCounter) + BloomFileExtension)
 
 	if err != nil {
 		return errors.Join(
@@ -89,8 +91,8 @@ func (sst *SSTable) InitTableFiles(directory string) error {
 	return nil
 }
 
-func getNextSstFilename(directory string, sstCounter uint32) string {
-	return fmt.Sprintf("../%s/sst_%d", directory, sstCounter)
+func getNextSstFilename(nodeId string, directory string, sstCounter uint32) string {
+	return fmt.Sprintf("../%s/%s_sst_%d", directory, nodeId, sstCounter)
 }
 
 type sparseIndex struct {
@@ -160,7 +162,7 @@ func populateSparseIndexFile(indices []sparseIndex, indexFile *os.File) error {
 	}
 
 	if err := utils.WriteToFile(buf.Bytes(), indexFile); err != nil {
-		fmt.Println("write to indexfile err:", err)
+		return fmt.Errorf("write to indexfile err: %w", err)
 	}
 	return nil
 
@@ -209,7 +211,7 @@ func (sst *SSTable) Get(key string) (string, error) {
 	// Use a buffered reader from the seek point to avoid syscalls per read due to io.ReadFull on the raw *os.File
 	reader := bufio.NewReader(sst.dataFile)
 
-	headerBuf := make([]byte, 17)
+	headerBuf := make([]byte, headerSize)
 	for {
 		// Read header
 		_, err := io.ReadFull(reader, headerBuf)
