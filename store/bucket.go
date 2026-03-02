@@ -17,7 +17,7 @@ type Bucket struct {
 	avgBucketSize uint32
 	bucketLow     float32
 	bucketHigh    float32
-	tables        []SSTable
+	tables        []*SSTable
 }
 
 const DefaultTableSizeInBytes uint32 = 3_000
@@ -27,7 +27,7 @@ func InitBucket(table *SSTable) *Bucket {
 		minTableSize: DefaultTableSizeInBytes,
 		bucketLow:    0.5,
 		bucketHigh:   1.5,
-		tables:       []SSTable{*table},
+		tables:       []*SSTable{table},
 	}
 	bucket.calculateAvgBucketSize()
 	return bucket
@@ -39,7 +39,7 @@ func InitEmptyBucket() *Bucket {
 		avgBucketSize: DefaultTableSizeInBytes,
 		bucketLow:     0.5,
 		bucketHigh:    1.5,
-		tables:        []SSTable{},
+		tables:        []*SSTable{},
 	}
 	return bucket
 }
@@ -57,7 +57,7 @@ func (b *Bucket) AppendTableToBucket(table *SSTable) {
 	}
 
 	if len(b.tables) == 0 {
-		b.tables = append(b.tables, *table)
+		b.tables = append(b.tables, table)
 		b.calculateAvgBucketSize()
 		return
 	}
@@ -66,7 +66,7 @@ func (b *Bucket) AppendTableToBucket(table *SSTable) {
 	higherSizeThreshold := uint32(b.bucketHigh * float32(b.avgBucketSize)) // 50% higher than avg size
 
 	if lowerSizeThreshold <= table.sizeInBytes && table.sizeInBytes <= higherSizeThreshold {
-		b.tables = append(b.tables, *table)
+		b.tables = append(b.tables, table)
 	} else {
 		utils.Log("Could not append table. Out of range")
 	}
@@ -157,14 +157,14 @@ func (b *Bucket) TriggerCompaction() (*SSTable, error) {
 
 	// * now that they're all in a heap, we need to throw it into 1 big sstable
 	utils.LogGREEN("Heap len = %d", h.Len())
-	finalSortedRun := make([]Record, 0)
+	finalSortedRun := make([]*Record, 0)
 	for h.Len() > 0 {
 		ele := heap.Pop(&h)
-		finalSortedRun = append(finalSortedRun, ele.(Record))
+		finalSortedRun = append(finalSortedRun, ele.(*Record))
 	}
 
-	filterAndDeleteTombstones(&finalSortedRun)
-	removeOutdatedEntires(&finalSortedRun)
+	filterAndDeleteTombstones(finalSortedRun)
+	removeOutdatedEntires(finalSortedRun)
 
 	// once the new merged table gets created, we add it to a new bucket
 	mergedSSTable, err := InitSSTableOnDisk(b.tables[0].nodeId, "storage", finalSortedRun)
@@ -173,7 +173,7 @@ func (b *Bucket) TriggerCompaction() (*SSTable, error) {
 	}
 
 	// ! now we need to delete the old sstables from disk to free up space
-	err = deleteOldSSTables(&b.tables)
+	err = deleteOldSSTables(b.tables)
 	if err != nil {
 		return nil, err
 	}
@@ -181,23 +181,23 @@ func (b *Bucket) TriggerCompaction() (*SSTable, error) {
 	return mergedSSTable, nil
 }
 
-func filterAndDeleteTombstones(sortedRun *[]Record) {
+func filterAndDeleteTombstones(sortedRun []*Record) {
 	var collectedTombstones []string
 
 	// collect all tombstones to delete
-	for i := range *sortedRun {
-		if (*sortedRun)[i].Header.Tombstone == 1 {
-			collectedTombstones = append(collectedTombstones, (*sortedRun)[i].Key)
+	for i := range sortedRun {
+		if sortedRun[i].Header.Tombstone == 1 {
+			collectedTombstones = append(collectedTombstones, sortedRun[i].Key)
 		}
 	}
 
 	// now look at every key in collectedTombstones and delete it from the sorted run
-	for i := 0; i < len(*sortedRun); {
-		if slices.Contains(collectedTombstones, (*sortedRun)[i].Key) {
-			if i < len(*sortedRun)-1 {
-				*sortedRun = slices.Delete(*sortedRun, i, i+1)
+	for i := 0; i < len(sortedRun); {
+		if slices.Contains(collectedTombstones, (sortedRun)[i].Key) {
+			if i < len(sortedRun)-1 {
+				sortedRun = slices.Delete(sortedRun, i, i+1)
 			} else {
-				*sortedRun = (*sortedRun)[:len(*sortedRun)-1]
+				sortedRun = sortedRun[:len(sortedRun)-1]
 			}
 		} else {
 			i++
@@ -205,33 +205,33 @@ func filterAndDeleteTombstones(sortedRun *[]Record) {
 	}
 }
 
-func removeOutdatedEntires(sortedRun *[]Record) {
+func removeOutdatedEntires(sortedRun []*Record) {
 	// * take every entry -> append to a map, if value for a given map key is > 1,
 	// * then sort the value (which will be a slice) & delete all values except the last 1 in the overall slice
 
-	var tempMap = make(map[string][]Record)
+	var tempMap = make(map[string][]*Record)
 
-	for i := range *sortedRun {
-		tempMap[(*sortedRun)[i].Key] = append(tempMap[(*sortedRun)[i].Key], (*sortedRun)[i])
+	for i := range sortedRun {
+		tempMap[sortedRun[i].Key] = append(tempMap[sortedRun[i].Key], sortedRun[i])
 	}
 
 	for _, v := range tempMap {
 		if len(v) > 1 {
-			slices.SortFunc(v, func(a, b Record) int {
+			slices.SortFunc(v, func(a, b *Record) int {
 				return cmp.Compare(a.Header.TimeStamp, b.Header.TimeStamp)
 			})
 
 			for i := 0; i < len(v)-1; i++ {
-				idx := slices.Index(*sortedRun, v[i])
-				*sortedRun = slices.Delete(*sortedRun, idx, idx+1)
+				idx := slices.Index(sortedRun, v[i])
+				sortedRun = slices.Delete(sortedRun, idx, idx+1)
 			}
 		}
 	}
 }
 
-func deleteOldSSTables(tables *[]SSTable) error {
-	for i := range *tables {
-		files := []string{(*tables)[i].dataFile.Name(), (*tables)[i].indexFile.Name(), (*tables)[i].bloomFilter.file.Name()}
+func deleteOldSSTables(tables []*SSTable) error {
+	for i := range tables {
+		files := []string{tables[i].dataFile.Name(), tables[i].indexFile.Name(), tables[i].bloomFilter.file.Name()}
 
 		for _, file := range files {
 			if err := os.Remove(file); err != nil {
@@ -240,6 +240,6 @@ func deleteOldSSTables(tables *[]SSTable) error {
 			}
 		}
 	}
-	*tables = []SSTable{} // empty the slice
+	tables = []*SSTable{} // empty the slice
 	return nil
 }
