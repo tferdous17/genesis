@@ -152,7 +152,7 @@ func (ds *DiskStore) Get(key string) (string, error) {
 	} // else err is KeyNotFound
 
 	// * key not found in memtable, thus search SSTables on disk
-	return ds.bucketManager.RetrieveKey(&key)
+	return ds.bucketManager.RetrieveKey(key)
 }
 
 func (ds *DiskStore) Delete(key string) error {
@@ -197,7 +197,12 @@ func (ds *DiskStore) LengthOfMemtable() {
 
 func (ds *DiskStore) FlushMemtable() error {
 	for i := range ds.immutableMemtables {
-		sstable := ds.immutableMemtables[i].Flush("storage")
+		sstable, err := ds.immutableMemtables[i].Flush("storage")
+		if err != nil {
+			ds.immutableMemtables = ds.immutableMemtables[i:]
+			return fmt.Errorf("flush memtable at index %d: %w", i, err)
+		}
+
 		if err := ds.bucketManager.InsertTable(sstable); err != nil {
 			// Retain remaining memtables upon error so they can be still be flushed later
 			ds.immutableMemtables = ds.immutableMemtables[i:]

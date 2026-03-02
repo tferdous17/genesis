@@ -16,31 +16,32 @@ type Memtable struct {
 
 func NewMemtable(nodeId string) *Memtable {
 	return &Memtable{
-		nodeId,
-		rbt.NewWithStringComparator(),
-		0,
+		nodeId:      nodeId,
+		data:        rbt.NewWithStringComparator(),
+		sizeInBytes: 0,
 	}
 }
 
 func (m *Memtable) Put(key string, value *Record) {
 	m.data.Put(key, value)
+	// ? Possibly size inflation on duplicate keys... handle another time
 	m.sizeInBytes += value.RecordSize
 }
 
-func (m *Memtable) Get(key string) (Record, error) {
+func (m *Memtable) Get(key string) (*Record, error) {
 	val, found := m.data.Get(key)
 	if !found {
-		return Record{}, utils.ErrKeyNotFound
+		return nil, utils.ErrKeyNotFound
 	}
-	return val.(Record), nil
+	return val.(*Record), nil
 }
 
-func (m *Memtable) GetAllKVPairs() map[string]Record {
-	kvPairs := make(map[string]Record)
+func (m *Memtable) GetAllKVPairs() map[string]*Record {
+	kvPairs := make(map[string]*Record, m.data.Size())
 
-	for _, k := range m.data.Keys() {
-		val, _ := m.data.Get(k)
-		kvPairs[k.(string)] = val.(Record)
+	iter := m.data.Iterator()
+	for iter.Next() {
+		kvPairs[iter.Key().(string)] = iter.Value().(*Record)
 	}
 
 	return kvPairs
@@ -50,28 +51,23 @@ func (m *Memtable) PrintAllRecords() {
 	fmt.Println(m.returnAllRecordsInSortedOrder())
 }
 
-func (m *Memtable) Flush(directory string) *SSTable {
+func (m *Memtable) Flush(directory string) (*SSTable, error) {
 	sortedEntries := m.returnAllRecordsInSortedOrder()
-	table, err := InitSSTableOnDisk(m.nodeId, directory, castToRecordSlice(&sortedEntries))
+	table, err := InitSSTableOnDisk(m.nodeId, directory, sortedEntries)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("flush memtable to disk: %w", err)
 	}
 
-	return table
+	return table, nil
 }
 
-func (m *Memtable) returnAllRecordsInSortedOrder() []interface{} {
-	data := inorderRBT(m.data.Root, make([]interface{}, 0))
-	return data
-}
-
-func inorderRBT(node *rbt.Node, data []interface{}) []interface{} {
-	if node != nil {
-		data = inorderRBT(node.Left, data)
-		data = append(data, node.Value)
-		data = inorderRBT(node.Right, data)
+func (m *Memtable) returnAllRecordsInSortedOrder() []*Record {
+	records := make([]*Record, 0, m.data.Size())
+	it := m.data.Iterator()
+	for it.Next() {
+		records = append(records, it.Value().(*Record))
 	}
-	return data
+	return records
 }
 
 func (m *Memtable) clear() {
