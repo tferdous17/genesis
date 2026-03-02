@@ -58,11 +58,11 @@ func (bm *BucketManager) InsertTable(table *SSTable) error {
 	return nil
 }
 
-func (bm *BucketManager) RetrieveKey(key *string) (string, error) {
+func (bm *BucketManager) RetrieveKey(key string) (string, error) {
 	// start at highest level first
 	for lvl := bm.highestLvl; lvl > 0; lvl-- {
 		for _, table := range bm.buckets[lvl].tables {
-			return table.Get(*key)
+			return table.Get(key)
 		}
 	}
 	return "<!not_found>", utils.ErrKeyNotFound
