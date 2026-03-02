@@ -22,13 +22,13 @@ func NewMemtable(nodeId string) *Memtable {
 	}
 }
 
-func (m *Memtable) Put(key *string, value *Record) {
-	m.data.Put(*key, *value)
+func (m *Memtable) Put(key string, value *Record) {
+	m.data.Put(key, value)
 	m.sizeInBytes += value.RecordSize
 }
 
-func (m *Memtable) Get(key *string) (Record, error) {
-	val, found := m.data.Get(*key)
+func (m *Memtable) Get(key string) (Record, error) {
+	val, found := m.data.Get(key)
 	if !found {
 		return Record{}, utils.ErrKeyNotFound
 	}

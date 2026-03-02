@@ -137,7 +137,7 @@ func (c *Cluster) Put(key, value string) error {
 	node, ok := c.nodes[nodeAddr]
 
 	if ok {
-		return node.Store.Put(&key, &value)
+		return node.Store.Put(key, value)
 	}
 	return nil
 }

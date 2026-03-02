@@ -22,7 +22,10 @@ func (d *dataMigrationServer) MigrateKeyValuePairs(ctx context.Context, req *pro
 	var migrationResults []*proto.MigrationResult
 
 	for i := range req.KvPairs {
-		d.underlyingNode.Store.PutRecordFromGRPC(req.KvPairs[i].Record)
+		err := d.underlyingNode.Store.PutRecordFromGRPC(req.KvPairs[i].Record)
+		if err != nil {
+			return nil, err
+		}
 
 		res := proto.MigrationResult{
 			Key:      req.KvPairs[i].Record.Key,
