@@ -40,6 +40,10 @@ func NewCluster(numOfNodes uint32) *Cluster {
 
 // newStore starts up a single-node KV store
 func newStore(nodeId string) (*DiskStore, error) {
+	if err := os.MkdirAll("../log", 0755); err != nil {
+		return nil, fmt.Errorf("create log directory: %w", err)
+	}
+
 	ds := &DiskStore{
 		memtable:      NewMemtable(nodeId),
 		bucketManager: InitBucketManager(),
