@@ -138,28 +138,32 @@ var defaultPort = ":8080"
 
 func (c *Cluster) Open() {
 	clusterService := http.NewClusterService(defaultPort, c)
-	err := clusterService.Start()
-	if err != nil {
+	if err := clusterService.Start(); err != nil {
+		log.Printf("failed to start HTTP server: %v", err)
 		return
 	}
 
 	fmt.Println("HTTP server started successfully @ port", defaultPort)
+
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+	<-signalCh
 
 	// Block until one of the signals above is received
 
-	<-signalCh
 	c.PrintDiagnostics()
 	log.Println("signal received, shutting down...")
-	err = clusterService.Close()
-	if err != nil {
-		fmt.Println(err)
+
+	if err := clusterService.Close(); err != nil {
+		log.Printf("error closing HTTP server: %v", err)
 	}
 
 }
 
 func (c *Cluster) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	fmt.Println("Closing entire cluster..")
 	for _, node := range c.nodes {
 		node.server.GracefulStop()
@@ -167,41 +171,57 @@ func (c *Cluster) Close() {
 }
 
 func (c *Cluster) Put(key, value string) error {
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	fmt.Printf("key = %s\t", key)
-	fmt.Printf("added @ node addr = %s\n", nodeAddr)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	nodeAddr, ok := c.hashRing.GetNode(key) // get which node this key should be on
+	if !ok {
+		return fmt.Errorf("no nodes available in cluster")
+	}
 
 	node, ok := c.nodes[nodeAddr]
-
-	if ok {
-		return node.Store.Put(key, value)
+	if !ok {
+		return fmt.Errorf("node not found for addr %s", nodeAddr)
 	}
-	return nil
+
+	log.Printf("PUT key=%s node=%s", key, nodeAddr)
+	return node.Store.Put(key, value)
 }
 
 func (c *Cluster) Get(key string) (string, error) {
-	fmt.Printf("key = %s\t", key)
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.nodes[nodeAddr]
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if ok {
-		fmt.Printf("found @ node addr = %s\n", nodeAddr)
-		return node.Store.Get(key)
+	nodeAddr, ok := c.hashRing.GetNode(key) // get which node this key should be on
+	if !ok {
+		return "", fmt.Errorf("no nodes available in cluster")
 	}
 
-	return "", nil
+	node, ok := c.nodes[nodeAddr]
+	if !ok {
+		return "", fmt.Errorf("node not found for addr %s", nodeAddr)
+	}
+
+	log.Printf("GET key=%s node=%s", key, nodeAddr)
+	return node.Store.Get(key)
 }
 
 func (c *Cluster) Delete(key string) error {
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.nodes[nodeAddr]
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if ok {
-		fmt.Printf("deleted %s @ node addr = %s\n", key, nodeAddr)
-		return node.Store.Delete(key)
+	nodeAddr, ok := c.hashRing.GetNode(key) // get which node this key should be on
+	if !ok {
+		return fmt.Errorf("no nodes available in cluster")
 	}
 
-	return nil
+	node, ok := c.nodes[nodeAddr]
+	if !ok {
+		return fmt.Errorf("node not found for addr %s", nodeAddr)
+	}
+
+	log.Printf("DELETE key=%s node=%s", key, nodeAddr)
+	return node.Store.Delete(key)
 }
 
 func (c *Cluster) PrintDiagnostics() {
