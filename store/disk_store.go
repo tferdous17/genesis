@@ -53,7 +53,14 @@ func newStore(nodeId string) (*DiskStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open WAL file for node %s: %w", nodeId, err)
 	}
-	ds.writeAheadLog = &writeAheadLog{file: logFile}
+	ds.writeAheadLog = newWAL(logFile)
+
+	// Replay WAL into memtable before accepting new writes --
+	// recovers any operations that were buffered but not flushed to an SSTable
+	// before the previous process shutdown or crashed
+	if err := ds.writeAheadLog.Recover(ds.memtable); err != nil {
+		return nil, fmt.Errorf("WAL recovery for node %s: %w", nodeId, err)
+	}
 
 	return ds, nil
 }
@@ -244,6 +251,6 @@ func deepCopyMemtable(memtable *Memtable) *Memtable {
 func (ds *DiskStore) Close() error {
 	// TODO finish implementing
 	return errors.Join(
-		ds.writeAheadLog.file.Close(),
+		ds.writeAheadLog.Close(),
 	)
 }
