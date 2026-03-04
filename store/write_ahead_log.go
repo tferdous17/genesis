@@ -112,7 +112,7 @@ func (w *writeAheadLog) Recover(memtable *Memtable) error {
 	}
 
 	if len(data) == 0 {
-		log.Printf("WAL is empty, nothing to recover")
+		//log.Printf("WAL is empty, nothing to recover")
 		return nil
 	}
 
@@ -130,7 +130,7 @@ func (w *writeAheadLog) Recover(memtable *Memtable) error {
 		offset++
 
 		if offset+headerSize > len(data) {
-			log.Printf("WAL recovery: partial header at offset %d, stopping", offset)
+			//log.Printf("WAL recovery: partial header at offset %d, stopping", offset)
 			skipped++
 			break
 		}
@@ -138,15 +138,15 @@ func (w *writeAheadLog) Recover(memtable *Memtable) error {
 		headerBuf := data[offset : offset+headerSize]
 		h := &Header{}
 		if err := h.DecodeHeader(headerBuf); err != nil {
-			log.Printf("WAL recovery: corrupted header at offset %d: %v, stopping", offset, err)
+			//log.Printf("WAL recovery: corrupted header at offset %d: %v, stopping", offset, err)
 			skipped++
 			break
 		}
 
 		recordSize := headerSize + int(h.KeySize) + int(h.ValueSize)
 		if offset+recordSize > len(data) {
-			log.Printf("WAL recovery: partial record at offset %d (need %d bytes, have %d), stopping",
-				offset, recordSize, len(data)-offset)
+			//log.Printf("WAL recovery: partial record at offset %d (need %d bytes, have %d), stopping",
+			//	offset, recordSize, len(data)-offset)
 			skipped++
 			break
 		}
@@ -154,7 +154,7 @@ func (w *writeAheadLog) Recover(memtable *Memtable) error {
 		fullRecord := data[offset : offset+recordSize]
 		r := &Record{}
 		if err := r.DecodeKV(fullRecord); err != nil {
-			log.Printf("WAL recovery: corrupted record at offset %d: %v, stopping", offset, err)
+			//log.Printf("WAL recovery: corrupted record at offset %d: %v, stopping", offset, err)
 			skipped++
 			break
 		}
@@ -162,15 +162,15 @@ func (w *writeAheadLog) Recover(memtable *Memtable) error {
 
 		switch op {
 		case PUT:
-			log.Printf("WAL recovery: replaying PUT key=%q", r.Key)
+			//log.Printf("WAL recovery: replaying PUT key=%q", r.Key)
 			memtable.Put(r.Key, r)
 			recovered++
 		case DELETE:
-			log.Printf("WAL recovery: replaying DELETE key=%q", r.Key)
+			//log.Printf("WAL recovery: replaying DELETE key=%q", r.Key)
 			memtable.Remove(r.Key)
 			recovered++
 		default:
-			log.Printf("WAL recovery: unknown operation byte %d at offset %d, skipping", op, offset)
+			//log.Printf("WAL recovery: unknown operation byte %d at offset %d, skipping", op, offset)
 			skipped++
 		}
 	}
