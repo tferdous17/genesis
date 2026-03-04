@@ -23,8 +23,12 @@ func NewMemtable(nodeId string) *Memtable {
 }
 
 func (m *Memtable) Put(key string, value *Record) {
+	// handle size inflation on duplicate keys... handle another time
+	if existing, found := m.data.Get(key); found {
+		m.sizeInBytes -= existing.(*Record).RecordSize
+	}
+
 	m.data.Put(key, value)
-	// ? Possibly size inflation on duplicate keys... handle another time
 	m.sizeInBytes += value.RecordSize
 }
 
