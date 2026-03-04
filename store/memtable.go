@@ -36,6 +36,14 @@ func (m *Memtable) Get(key string) (*Record, error) {
 	return val.(*Record), nil
 }
 
+// Remove used during data migrations/rebalancing, not the same as a Delete operation
+func (m *Memtable) Remove(key string) {
+	if existing, found := m.data.Get(key); found {
+		m.sizeInBytes -= existing.(*Record).RecordSize
+		m.data.Remove(key)
+	}
+}
+
 func (m *Memtable) GetAllKVPairs() map[string]*Record {
 	kvPairs := make(map[string]*Record, m.data.Size())
 

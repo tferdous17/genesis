@@ -11,8 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tferdous17/genesis/utils"
-
 	"github.com/tferdous17/genesis/http"
 	"github.com/tferdous17/genesis/proto"
 
@@ -119,7 +117,6 @@ func (c *Cluster) RemoveNode(addr string) {
 		addr = ":" + addr
 	}
 
-	addr = fmt.Sprintf(":%s", addr)
 	node, ok := c.nodes[addr]
 	if !ok {
 		log.Printf("node @ addr %s not found", addr)
@@ -235,22 +232,22 @@ func (c *Cluster) PrintDiagnostics() {
 // dataMigrationAccumulator is meant to keep track of every single group of records that needs to be migrated
 // srcNode ":11000" -> destNode ":11000" : []Record{rec1,rec2,...}
 type dataMigrationAccumulator struct {
-	data map[string]map[string][]Record
+	data map[string]map[string][]*Record
 }
 
 func (d *dataMigrationAccumulator) Init(nodeAddresses []string) {
-	d.data = make(map[string]map[string][]Record)
+	d.data = make(map[string]map[string][]*Record)
 	for _, addr := range nodeAddresses {
-		d.data[addr] = make(map[string][]Record)
+		d.data[addr] = make(map[string][]*Record)
 	}
 }
 
 func (d *dataMigrationAccumulator) Append(srcNode string, destNode string, data *Record) {
 	_, ok := d.data[srcNode][destNode]
 	if !ok {
-		d.data[srcNode][destNode] = make([]Record, 0)
+		d.data[srcNode][destNode] = make([]*Record, 0)
 	}
-	d.data[srcNode][destNode] = append(d.data[srcNode][destNode], *data)
+	d.data[srcNode][destNode] = append(d.data[srcNode][destNode], data)
 }
 
 func (d *dataMigrationAccumulator) ClearAccumulator() {
@@ -266,11 +263,15 @@ func (c *Cluster) rebalance() {
 		pairsMap := node.Store.memtable.GetAllKVPairs()
 
 		for key, record := range pairsMap {
-			newAddr, _ := c.hashRing.GetNode(key)
+			newAddr, ok := c.hashRing.GetNode(key)
+			if !ok {
+				log.Printf("no node found for key %s during rebalance, skipping", key)
+				continue
+			}
 
 			if newAddr != node.Addr {
 				c.accumulator.Append(node.Addr, newAddr, record)
-				node.Store.memtable.data.Remove(key)
+				node.Store.RemoveFromMemtable(key)
 			}
 		}
 	}
@@ -278,19 +279,26 @@ func (c *Cluster) rebalance() {
 	for srcNode, v := range c.accumulator.data {
 		for destNode, pairs := range v {
 			if len(pairs) > 0 {
-				c.transferDataBetweenNodes(srcNode, destNode, &pairs)
+				if err := c.transferDataBetweenNodes(srcNode, destNode, pairs); err != nil {
+					log.Printf("failed to transfer %d keys from %s to %s: %v",
+						len(pairs), srcNode, destNode, err)
+				}
 			}
 		}
 	}
 	c.accumulator.ClearAccumulator()
 }
 
-func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAddr string, data []*Record) {
-	client, conn, err := StartGRPCClient(destNodeServerAddr) // ! silently ignoring error rn, come back later
+func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeAddr string, data []*Record) error {
+	client, conn, err := StartGRPCClient(destNodeAddr)
+	if err != nil {
+		return fmt.Errorf("connect to destination node %s: %w", destNodeAddr, err)
+	}
+
 	defer func(conn *grpc.ClientConn) {
 		err := conn.Close()
 		if err != nil {
-			return
+			log.Printf("close gRPC connection to %s: %v", destNodeAddr, err)
 		}
 	}(conn)
 
@@ -300,17 +308,22 @@ func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAdd
 
 	res, err := client.MigrateKeyValuePairs(ctx, &proto.KeyValueMigrationRequest{
 		SourceNodeAddr: srcNodeAddr,
-		DestNodeAddr:   destNodeServerAddr,
+		DestNodeAddr:   destNodeAddr,
 		KvPairs:        kvPairs,
 	})
 	if err != nil {
-		utils.LogRED("err = %s", err)
+		return fmt.Errorf("migrate key-value pairs to %s: %w", destNodeAddr, err)
 	}
-	fmt.Println(res)
+
+	if !res.Success {
+		return fmt.Errorf("migration to %s reported failure", destNodeAddr)
+	}
+
+	return nil
 }
 
 func (c *Cluster) getAllNodeAddrs() []string {
-	var addrs []string
+	addrs := make([]string, 0, len(c.nodes))
 	for addr := range c.nodes {
 		addrs = append(addrs, addr)
 	}
@@ -333,9 +346,9 @@ func convertProtoRecordToStoreRecord(record *proto.Record) *Record {
 }
 
 func convertRecordsToProtoKVPairs(records []*Record) []*proto.KVPair {
-	var KVPairs []*proto.KVPair
+	kvPairs := make([]*proto.KVPair, 0, len(records))
 	for _, rec := range records {
-		convRec := &proto.KVPair{
+		kvPairs = append(kvPairs, &proto.KVPair{
 			Record: &proto.Record{
 				Header: &proto.Header{
 					Checksum:  rec.Header.CheckSum,
@@ -348,10 +361,7 @@ func convertRecordsToProtoKVPairs(records []*Record) []*proto.KVPair {
 				Value:      rec.Value,
 				RecordSize: rec.RecordSize,
 			},
-		}
-
-		KVPairs = append(KVPairs, convRec)
+		})
 	}
-
-	return KVPairs
+	return kvPairs
 }

@@ -191,6 +191,13 @@ func (ds *DiskStore) Delete(key string) error {
 	return nil
 }
 
+// RemoveFromMemtable used during data migrations/rebalancing, not the same as a Delete op
+func (ds *DiskStore) RemoveFromMemtable(key string) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+	ds.memtable.Remove(key)
+}
+
 func (ds *DiskStore) LengthOfMemtable() {
 	fmt.Println(len(ds.memtable.data.Keys()))
 }
