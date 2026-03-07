@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 
 	"github.com/tferdous17/genesis/utils"
@@ -124,11 +125,23 @@ func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 }
 
 func (r *Record) DecodeKV(buf []byte) error {
-	err := r.Header.DecodeHeader(buf[:headerSize])
+	if len(buf) < int(headerSize) {
+		return fmt.Errorf("buffer too short for header: need %d bytes, got %d", headerSize, len(buf))
+	}
+
+	if err := r.Header.DecodeHeader(buf[:headerSize]); err != nil {
+		return err
+	}
+
+	required := int(headerSize) + int(r.Header.KeySize) + int(r.Header.ValueSize)
+	if len(buf) < required {
+		return fmt.Errorf("buffer too short for key/value: need %d bytes, got %d", required, len(buf))
+	}
+
 	r.Key = string(buf[headerSize : headerSize+r.Header.KeySize])
 	r.Value = string(buf[headerSize+r.Header.KeySize : headerSize+r.Header.KeySize+r.Header.ValueSize])
-	r.RecordSize = headerSize + r.Header.KeySize + r.Header.ValueSize
-	return err
+	r.RecordSize = uint32(required)
+	return nil
 }
 
 func (r *Record) Size() uint32 {
