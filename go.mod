@@ -1,6 +1,6 @@
 module github.com/tferdous17/genesis
 
-go 1.26.0
+go 1.24.0
 
 require (
 	github.com/emirpasic/gods v1.18.1
@@ -8,7 +8,7 @@ require (
 	github.com/serialx/hashring v0.0.0-20200727003509-22c0c7ab6b1b
 	github.com/spaolacci/murmur3 v1.1.0
 	google.golang.org/grpc v1.69.4
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.5
 )
 
 require (
