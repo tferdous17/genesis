@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 
 	"github.com/tferdous17/genesis/utils"
@@ -58,54 +59,21 @@ func NewHeader(buf []byte) (*Header, error) {
 }
 
 func (h *Header) EncodeHeader(buf *bytes.Buffer) error {
-	err := binary.Write(buf, binary.LittleEndian, &h.CheckSum)
-	if err != nil {
+	// binary.Write can handle the entire header bc of fixed-size fields
+	if err := binary.Write(buf, binary.LittleEndian, h); err != nil {
 		return utils.ErrEncodingHeaderFailed
 	}
-	err = binary.Write(buf, binary.LittleEndian, &h.Tombstone)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-	err = binary.Write(buf, binary.LittleEndian, &h.TimeStamp)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-	err = binary.Write(buf, binary.LittleEndian, &h.KeySize)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-	err = binary.Write(buf, binary.LittleEndian, &h.ValueSize)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-
 	return nil
 }
 
 func (h *Header) DecodeHeader(buf []byte) error {
-	// must pass in reference b/c go is call by value and won't modify original otherwise
-	_, err := binary.Decode(buf[:4], binary.LittleEndian, &h.CheckSum)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
+	if len(buf) < int(headerSize) {
+		return fmt.Errorf("header buffer too short: need %d, got %d", headerSize, len(buf))
 	}
-	_, err = binary.Decode(buf[4:5], binary.LittleEndian, &h.Tombstone)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
+	if _, err := binary.Decode(buf[:headerSize], binary.LittleEndian, h); err != nil {
+		return utils.ErrDecodingHeaderFailed
 	}
-	_, err = binary.Decode(buf[5:9], binary.LittleEndian, &h.TimeStamp)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-	_, err = binary.Decode(buf[9:13], binary.LittleEndian, &h.KeySize)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-	_, err = binary.Decode(buf[13:17], binary.LittleEndian, &h.ValueSize)
-	if err != nil {
-		return utils.ErrEncodingHeaderFailed
-	}
-
-	return err
+	return nil
 }
 
 func (h *Header) MarkTombstone() {
@@ -124,11 +92,23 @@ func (r *Record) EncodeKV(buf *bytes.Buffer) error {
 }
 
 func (r *Record) DecodeKV(buf []byte) error {
-	err := r.Header.DecodeHeader(buf[:headerSize])
+	if len(buf) < int(headerSize) {
+		return fmt.Errorf("buffer too short for header: need %d bytes, got %d", headerSize, len(buf))
+	}
+
+	if err := r.Header.DecodeHeader(buf[:headerSize]); err != nil {
+		return err
+	}
+
+	required := int(headerSize) + int(r.Header.KeySize) + int(r.Header.ValueSize)
+	if len(buf) < required {
+		return fmt.Errorf("buffer too short for key/value: need %d bytes, got %d", required, len(buf))
+	}
+
 	r.Key = string(buf[headerSize : headerSize+r.Header.KeySize])
 	r.Value = string(buf[headerSize+r.Header.KeySize : headerSize+r.Header.KeySize+r.Header.ValueSize])
-	r.RecordSize = headerSize + r.Header.KeySize + r.Header.ValueSize
-	return err
+	r.RecordSize = uint32(required)
+	return nil
 }
 
 func (r *Record) Size() uint32 {

@@ -1,6 +1,6 @@
 package store
 
-type MinRecordHeap []Record
+type MinRecordHeap []*Record
 
 func (h MinRecordHeap) Len() int {
 	return len(h)
@@ -15,15 +15,14 @@ func (h MinRecordHeap) Swap(i, j int) {
 }
 
 func (h *MinRecordHeap) Push(val interface{}) {
-	*h = append(*h, val.(Record))
+	*h = append(*h, val.(*Record))
 }
 
 func (h *MinRecordHeap) Pop() interface{} {
-	heapDerefrenced := *h
-
-	size := len(heapDerefrenced)
-	val := heapDerefrenced[size-1]
-	*h = heapDerefrenced[:size-1]
-
+	old := *h
+	size := len(old)
+	val := old[size-1]
+	old[size-1] = nil // nil out the pointer to allow garbage collection
+	*h = old[:size-1]
 	return val
 }

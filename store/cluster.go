@@ -6,11 +6,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"sync/atomic"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
-
-	"github.com/tferdous17/genesis/utils"
 
 	"github.com/tferdous17/genesis/http"
 	"github.com/tferdous17/genesis/proto"
@@ -27,142 +26,201 @@ type Node struct {
 }
 
 type Cluster struct {
+	mu          sync.RWMutex
 	hashRing    *hashring.HashRing
 	nodes       map[string]*Node
 	accumulator *dataMigrationAccumulator
-}
 
-var nodeCounter uint32 = 1
-var currentNodePort uint32 = 11000
+	nextNodeCounter uint32
+	nextNodePort    uint32
+}
 
 func (c *Cluster) initNodes(numOfNodes uint32) {
 	c.nodes = make(map[string]*Node)
 	c.accumulator = &dataMigrationAccumulator{}
+	c.nextNodeCounter = 1
+	c.nextNodePort = 11000
 
 	var nodeAddrs []string
 
 	for i := 0; i < int(numOfNodes); i++ {
-		store, _ := newStore(nodeCounter)
-		node := Node{
-			ID:    fmt.Sprintf("node-%d", nodeCounter),
-			Addr:  fmt.Sprintf(":%d", currentNodePort),
+		nodeId := fmt.Sprintf("node-%d", c.nextNodeCounter)
+
+		store, err := newStore(nodeId)
+		if err != nil {
+			log.Printf("failed to create store for node %s: %v", nodeId, err)
+			continue
+		}
+
+		node := &Node{
+			ID:    nodeId,
+			Addr:  fmt.Sprintf(":%d", c.nextNodePort),
 			Store: store,
 		}
-		c.nodes[node.Addr] = &node
+		c.nodes[node.Addr] = node
 
-		node.server = StartGRPCServer(node.Addr, &node)
+		node.server, err = StartGRPCServer(node.Addr, node)
+		if err != nil {
+			log.Printf("failed to start gRPC server for node %s: %v", nodeId, err)
+			delete(c.nodes, node.Addr)
+			continue
+		}
 
-		atomic.AddUint32(&currentNodePort, 1)
-		atomic.AddUint32(&nodeCounter, 1)
+		c.nextNodePort++
+		c.nextNodeCounter++
 		nodeAddrs = append(nodeAddrs, node.Addr)
 	}
 
 	c.hashRing = hashring.New(nodeAddrs)
-	c.accumulator = &dataMigrationAccumulator{}
 }
 
-func (c *Cluster) AddNode() {
-	fmt.Println("adding new node @ address", currentNodePort)
-	store, _ := newStore(nodeCounter)
-	node := Node{
-		ID:    fmt.Sprintf("node-%d", nodeCounter),
-		Addr:  fmt.Sprintf(":%d", currentNodePort),
+func (c *Cluster) AddNode() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	log.Printf("adding new node on port %d", c.nextNodePort)
+	nodeId := fmt.Sprintf("node-%d", c.nextNodeCounter)
+
+	store, err := newStore(nodeId)
+	if err != nil {
+		return fmt.Errorf("create store for node %s: %w", nodeId, err)
+	}
+
+	node := &Node{
+		ID:    nodeId,
+		Addr:  fmt.Sprintf(":%d", c.nextNodePort),
 		Store: store,
 	}
-	c.nodes[node.Addr] = &node
+	c.nodes[node.Addr] = node
 
-	node.server = StartGRPCServer(node.Addr, &node)
+	node.server, err = StartGRPCServer(node.Addr, node)
+	if err != nil {
+		delete(c.nodes, node.Addr)
+		return fmt.Errorf("start gRPC server for node %s: %w", nodeId, err)
+	}
 
-	atomic.AddUint32(&nodeCounter, 1)
-	atomic.AddUint32(&currentNodePort, 1)
+	c.nextNodePort++
+	c.nextNodeCounter++
 
 	// refresh the hash ring w/ new node
 	c.hashRing = c.hashRing.AddNode(node.Addr)
 	c.rebalance()
+
+	return nil
 }
 
 func (c *Cluster) RemoveNode(addr string) {
-	addr = fmt.Sprintf(":%s", addr)
-	_, ok := c.nodes[addr]
-	if ok {
-		c.hashRing = c.hashRing.RemoveNode(addr)
-		c.rebalance()
-		c.nodes[addr].server.GracefulStop()
-		delete(c.nodes, addr)
-		fmt.Printf("node @ addr %s successfully deleted", addr)
-	} else {
-		fmt.Printf("node @ addr %s not found", addr)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !strings.HasPrefix(addr, ":") {
+		addr = ":" + addr
 	}
+
+	node, ok := c.nodes[addr]
+	if !ok {
+		log.Printf("node @ addr %s not found", addr)
+		return
+	}
+
+	c.hashRing = c.hashRing.RemoveNode(addr)
+	c.rebalance()
+	node.server.GracefulStop()
+	delete(c.nodes, addr)
+	fmt.Printf("node @ addr %s successfully deleted", addr)
+
 }
 
 var defaultPort = ":8080"
 
 func (c *Cluster) Open() {
 	clusterService := http.NewClusterService(defaultPort, c)
-	err := clusterService.Start()
-	if err != nil {
+	if err := clusterService.Start(); err != nil {
+		log.Printf("failed to start HTTP server: %v", err)
 		return
 	}
 
 	fmt.Println("HTTP server started successfully @ port", defaultPort)
+
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+	<-signalCh
 
 	// Block until one of the signals above is received
 
-	<-signalCh
 	c.PrintDiagnostics()
 	log.Println("signal received, shutting down...")
-	err = clusterService.Close()
-	if err != nil {
-		fmt.Println(err)
+
+	if err := clusterService.Close(); err != nil {
+		log.Printf("error closing HTTP server: %v", err)
 	}
 
 }
 
-func (c *Cluster) Close() {
+func (c *Cluster) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	fmt.Println("Closing entire cluster..")
 	for _, node := range c.nodes {
 		node.server.GracefulStop()
 	}
+
+	return nil
 }
 
 func (c *Cluster) Put(key, value string) error {
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	fmt.Printf("key = %s\t", key)
-	fmt.Printf("added @ node addr = %s\n", nodeAddr)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	nodeAddr, ok := c.hashRing.GetNode(key) // get which node this key should be on
+	if !ok {
+		return fmt.Errorf("no nodes available in cluster")
+	}
 
 	node, ok := c.nodes[nodeAddr]
-
-	if ok {
-		return node.Store.Put(&key, &value)
+	if !ok {
+		return fmt.Errorf("node not found for addr %s", nodeAddr)
 	}
-	return nil
+
+	log.Printf("PUT key=%s node=%s", key, nodeAddr)
+	return node.Store.Put(key, value)
 }
 
 func (c *Cluster) Get(key string) (string, error) {
-	fmt.Printf("key = %s\t", key)
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.nodes[nodeAddr]
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if ok {
-		fmt.Printf("found @ node addr = %s\n", nodeAddr)
-		return node.Store.Get(key)
+	nodeAddr, ok := c.hashRing.GetNode(key) // get which node this key should be on
+	if !ok {
+		return "", fmt.Errorf("no nodes available in cluster")
 	}
 
-	return "", nil
+	node, ok := c.nodes[nodeAddr]
+	if !ok {
+		return "", fmt.Errorf("node not found for addr %s", nodeAddr)
+	}
+
+	log.Printf("GET key=%s node=%s", key, nodeAddr)
+	return node.Store.Get(key)
 }
 
 func (c *Cluster) Delete(key string) error {
-	nodeAddr, _ := c.hashRing.GetNode(key) // get which node this key should be on
-	node, ok := c.nodes[nodeAddr]
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	if ok {
-		fmt.Printf("deleted %s @ node addr = %s\n", key, nodeAddr)
-		return node.Store.Delete(key)
+	nodeAddr, ok := c.hashRing.GetNode(key) // get which node this key should be on
+	if !ok {
+		return fmt.Errorf("no nodes available in cluster")
 	}
 
-	return nil
+	node, ok := c.nodes[nodeAddr]
+	if !ok {
+		return fmt.Errorf("node not found for addr %s", nodeAddr)
+	}
+
+	log.Printf("DELETE key=%s node=%s", key, nodeAddr)
+	return node.Store.Delete(key)
 }
 
 func (c *Cluster) PrintDiagnostics() {
@@ -176,22 +234,22 @@ func (c *Cluster) PrintDiagnostics() {
 // dataMigrationAccumulator is meant to keep track of every single group of records that needs to be migrated
 // srcNode ":11000" -> destNode ":11000" : []Record{rec1,rec2,...}
 type dataMigrationAccumulator struct {
-	data map[string]map[string][]Record
+	data map[string]map[string][]*Record
 }
 
 func (d *dataMigrationAccumulator) Init(nodeAddresses []string) {
-	d.data = make(map[string]map[string][]Record)
+	d.data = make(map[string]map[string][]*Record)
 	for _, addr := range nodeAddresses {
-		d.data[addr] = make(map[string][]Record)
+		d.data[addr] = make(map[string][]*Record)
 	}
 }
 
 func (d *dataMigrationAccumulator) Append(srcNode string, destNode string, data *Record) {
 	_, ok := d.data[srcNode][destNode]
 	if !ok {
-		d.data[srcNode][destNode] = make([]Record, 0)
+		d.data[srcNode][destNode] = make([]*Record, 0)
 	}
-	d.data[srcNode][destNode] = append(d.data[srcNode][destNode], *data)
+	d.data[srcNode][destNode] = append(d.data[srcNode][destNode], data)
 }
 
 func (d *dataMigrationAccumulator) ClearAccumulator() {
@@ -207,11 +265,15 @@ func (c *Cluster) rebalance() {
 		pairsMap := node.Store.memtable.GetAllKVPairs()
 
 		for key, record := range pairsMap {
-			newAddr, _ := c.hashRing.GetNode(key)
+			newAddr, ok := c.hashRing.GetNode(key)
+			if !ok {
+				log.Printf("no node found for key %s during rebalance, skipping", key)
+				continue
+			}
 
 			if newAddr != node.Addr {
-				c.accumulator.Append(node.Addr, newAddr, &record)
-				node.Store.memtable.data.Remove(key)
+				c.accumulator.Append(node.Addr, newAddr, record)
+				node.Store.RemoveFromMemtable(key)
 			}
 		}
 	}
@@ -219,19 +281,26 @@ func (c *Cluster) rebalance() {
 	for srcNode, v := range c.accumulator.data {
 		for destNode, pairs := range v {
 			if len(pairs) > 0 {
-				c.transferDataBetweenNodes(srcNode, destNode, &pairs)
+				if err := c.transferDataBetweenNodes(srcNode, destNode, pairs); err != nil {
+					log.Printf("failed to transfer %d keys from %s to %s: %v",
+						len(pairs), srcNode, destNode, err)
+				}
 			}
 		}
 	}
 	c.accumulator.ClearAccumulator()
 }
 
-func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAddr string, data *[]Record) {
-	client, conn := StartGRPCClient(destNodeServerAddr)
+func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeAddr string, data []*Record) error {
+	client, conn, err := StartGRPCClient(destNodeAddr)
+	if err != nil {
+		return fmt.Errorf("connect to destination node %s: %w", destNodeAddr, err)
+	}
+
 	defer func(conn *grpc.ClientConn) {
 		err := conn.Close()
 		if err != nil {
-			return
+			log.Printf("close gRPC connection to %s: %v", destNodeAddr, err)
 		}
 	}(conn)
 
@@ -241,17 +310,22 @@ func (c *Cluster) transferDataBetweenNodes(srcNodeAddr string, destNodeServerAdd
 
 	res, err := client.MigrateKeyValuePairs(ctx, &proto.KeyValueMigrationRequest{
 		SourceNodeAddr: srcNodeAddr,
-		DestNodeAddr:   destNodeServerAddr,
+		DestNodeAddr:   destNodeAddr,
 		KvPairs:        kvPairs,
 	})
 	if err != nil {
-		utils.LogRED("err = %s", err)
+		return fmt.Errorf("migrate key-value pairs to %s: %w", destNodeAddr, err)
 	}
-	fmt.Println(res)
+
+	if !res.Success {
+		return fmt.Errorf("migration to %s reported failure", destNodeAddr)
+	}
+
+	return nil
 }
 
 func (c *Cluster) getAllNodeAddrs() []string {
-	var addrs []string
+	addrs := make([]string, 0, len(c.nodes))
 	for addr := range c.nodes {
 		addrs = append(addrs, addr)
 	}
@@ -273,10 +347,10 @@ func convertProtoRecordToStoreRecord(record *proto.Record) *Record {
 	}
 }
 
-func convertRecordsToProtoKVPairs(records *[]Record) []*proto.KVPair {
-	var KVPairs []*proto.KVPair
-	for _, rec := range *records {
-		convRec := &proto.KVPair{
+func convertRecordsToProtoKVPairs(records []*Record) []*proto.KVPair {
+	kvPairs := make([]*proto.KVPair, 0, len(records))
+	for _, rec := range records {
+		kvPairs = append(kvPairs, &proto.KVPair{
 			Record: &proto.Record{
 				Header: &proto.Header{
 					Checksum:  rec.Header.CheckSum,
@@ -289,10 +363,7 @@ func convertRecordsToProtoKVPairs(records *[]Record) []*proto.KVPair {
 				Value:      rec.Value,
 				RecordSize: rec.RecordSize,
 			},
-		}
-
-		KVPairs = append(KVPairs, convRec)
+		})
 	}
-
-	return KVPairs
+	return kvPairs
 }

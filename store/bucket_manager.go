@@ -1,11 +1,13 @@
 package store
 
 import (
+	"errors"
+	"fmt"
 	"github.com/tferdous17/genesis/utils"
 )
 
 type BucketManager struct {
-	buckets           map[int]*Bucket // maybe make map?
+	buckets           map[int]*Bucket
 	highestLvl        int
 	minTableThreshold int
 	maxTableThreshold int
@@ -25,17 +27,18 @@ func InitBucketManager() *BucketManager {
 }
 
 func (bm *BucketManager) InsertTable(table *SSTable) error {
-	var levelToAppend = 1
+	levelToAppend := 1
+	inserted := false
 
 	for currLvl := bm.highestLvl; currLvl > 0; currLvl-- {
 		bkt := bm.buckets[currLvl]
 
 		calculatedLevelReturn := calculateLevel(bkt, table)
-		levelToAppend = currLvl + calculatedLevelReturn
-
 		if calculatedLevelReturn == -1 {
 			continue
 		}
+
+		levelToAppend = currLvl + calculatedLevelReturn
 
 		if calculatedLevelReturn == 0 {
 			bm.buckets[currLvl].AppendTableToBucket(table)
@@ -44,7 +47,13 @@ func (bm *BucketManager) InsertTable(table *SSTable) error {
 			bm.buckets[levelToAppend].AppendTableToBucket(table)
 			bm.highestLvl++
 		}
+		inserted = true
 		break
+	}
+
+	if !inserted {
+		bm.buckets[1].AppendTableToBucket(table)
+		levelToAppend = 1
 	}
 
 	if bm.shouldCompact(levelToAppend) {
@@ -58,14 +67,25 @@ func (bm *BucketManager) InsertTable(table *SSTable) error {
 	return nil
 }
 
-func (bm *BucketManager) RetrieveKey(key *string) (string, error) {
+func (bm *BucketManager) RetrieveKey(key string) (string, error) {
 	// start at highest level first
 	for lvl := bm.highestLvl; lvl > 0; lvl-- {
 		for _, table := range bm.buckets[lvl].tables {
-			return table.Get(*key)
+			val, err := table.Get(key)
+			if err == nil {
+				return val, nil
+			}
+
+			// key not in this table, so keep searching other tables and levels
+			if errors.Is(err, utils.ErrKeyNotWithinTable) || errors.Is(err, utils.ErrKeyNotFound) {
+				continue
+			}
+
+			// in the case of unexpected errors, surface error immediately
+			return "", fmt.Errorf("retrieve key from level %d: %w", lvl, err)
 		}
 	}
-	return "<!not_found>", utils.ErrKeyNotFound
+	return "", utils.ErrKeyNotFound
 }
 
 func (bm *BucketManager) DebugBM() {
@@ -78,12 +98,14 @@ func (bm *BucketManager) DebugBM() {
 func (bm *BucketManager) compact(level int) error {
 	bkt := bm.buckets[level]
 	mergedTable, err := bkt.TriggerCompaction() // ONLY triggers if threshold is reached in the bucket
-
-	if mergedTable != nil {
-		err := bm.InsertTable(mergedTable)
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return fmt.Errorf("compaction at level %d: %w", level, err)
+	}
+	if mergedTable == nil {
+		return nil
+	}
+	if err := bm.InsertTable(mergedTable); err != nil {
+		return fmt.Errorf("insert merged table after compaction at level %d: %w", level, err)
 	}
 
 	return err

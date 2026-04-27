@@ -9,36 +9,51 @@ import (
 )
 
 type Memtable struct {
+	nodeId      string
 	data        *rbt.Tree
 	sizeInBytes uint32
 }
 
-func NewMemtable() *Memtable {
+func NewMemtable(nodeId string) *Memtable {
 	return &Memtable{
-		rbt.NewWithStringComparator(),
-		0,
+		nodeId:      nodeId,
+		data:        rbt.NewWithStringComparator(),
+		sizeInBytes: 0,
 	}
 }
 
-func (m *Memtable) Put(key *string, value *Record) {
-	m.data.Put(*key, *value)
+func (m *Memtable) Put(key string, value *Record) {
+	// handle size inflation on duplicate keys... handle another time
+	if existing, found := m.data.Get(key); found {
+		m.sizeInBytes -= existing.(*Record).RecordSize
+	}
+
+	m.data.Put(key, value)
 	m.sizeInBytes += value.RecordSize
 }
 
-func (m *Memtable) Get(key *string) (Record, error) {
-	val, found := m.data.Get(*key)
+func (m *Memtable) Get(key string) (*Record, error) {
+	val, found := m.data.Get(key)
 	if !found {
-		return Record{}, utils.ErrKeyNotFound
+		return nil, utils.ErrKeyNotFound
 	}
-	return val.(Record), nil
+	return val.(*Record), nil
 }
 
-func (m *Memtable) GetAllKVPairs() map[string]Record {
-	kvPairs := make(map[string]Record)
+// Remove used during data migrations/rebalancing, not the same as a Delete operation
+func (m *Memtable) Remove(key string) {
+	if existing, found := m.data.Get(key); found {
+		m.sizeInBytes -= existing.(*Record).RecordSize
+		m.data.Remove(key)
+	}
+}
 
-	for _, k := range m.data.Keys() {
-		val, _ := m.data.Get(k)
-		kvPairs[k.(string)] = val.(Record)
+func (m *Memtable) GetAllKVPairs() map[string]*Record {
+	kvPairs := make(map[string]*Record, m.data.Size())
+
+	iter := m.data.Iterator()
+	for iter.Next() {
+		kvPairs[iter.Key().(string)] = iter.Value().(*Record)
 	}
 
 	return kvPairs
@@ -48,28 +63,23 @@ func (m *Memtable) PrintAllRecords() {
 	fmt.Println(m.returnAllRecordsInSortedOrder())
 }
 
-func (m *Memtable) Flush(directory string) *SSTable {
+func (m *Memtable) Flush(directory string) (*SSTable, error) {
 	sortedEntries := m.returnAllRecordsInSortedOrder()
-	table, err := InitSSTableOnDisk(directory, castToRecordSlice(&sortedEntries))
+	table, err := InitSSTableOnDisk(m.nodeId, directory, sortedEntries)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("flush memtable to disk: %w", err)
 	}
 
-	return table
+	return table, nil
 }
 
-func (m *Memtable) returnAllRecordsInSortedOrder() []interface{} {
-	data := inorderRBT(m.data.Root, make([]interface{}, 0))
-	return data
-}
-
-func inorderRBT(node *rbt.Node, data []interface{}) []interface{} {
-	if node != nil {
-		data = inorderRBT(node.Left, data)
-		data = append(data, node.Value)
-		data = inorderRBT(node.Right, data)
+func (m *Memtable) returnAllRecordsInSortedOrder() []*Record {
+	records := make([]*Record, 0, m.data.Size())
+	it := m.data.Iterator()
+	for it.Next() {
+		records = append(records, it.Value().(*Record))
 	}
-	return data
+	return records
 }
 
 func (m *Memtable) clear() {
@@ -78,7 +88,7 @@ func (m *Memtable) clear() {
 	m.sizeInBytes = 0
 }
 
-func castToRecordSlice(interfaceSlice *[]interface{}) *[]Record {
+func castToRecordSlice(interfaceSlice *[]interface{}) []Record {
 	recordSlice := make([]Record, len(*interfaceSlice))
 	for i, iface := range *interfaceSlice {
 		record, ok := iface.(Record)
@@ -87,5 +97,5 @@ func castToRecordSlice(interfaceSlice *[]interface{}) *[]Record {
 		}
 		recordSlice[i] = record
 	}
-	return &recordSlice
+	return recordSlice
 }
